@@ -160,8 +160,8 @@ export default function Checkout() {
     try {
       localStorage.setItem("carrito_checkout", JSON.stringify(next));
     } catch (e) {
-  console.warn("No se pudo guardar en localStorage", e);
-}
+      console.warn("No se pudo guardar en localStorage", e);
+    }
   }
 
   function quitarItemByKey(_key) {
@@ -196,32 +196,35 @@ export default function Checkout() {
     const db = getFirestore(app);
     const tiendaId = tienda?.id || tienda?.slug || slug || "chaketortas";
 
-    const payload = {
-      estado: "pendiente",
-      cliente: {
-        nombre: String(cliente.nombre).trim(),
-        apellido: String(cliente.apellido).trim(),
-        contacto: String(cliente.contacto).trim(),
-      },
-      mensaje: String(mensaje || "").trim(),
-      items: carrito.map((it) => ({
-        productoId: it.productoId || "",
-        nombreSnapshot: it.nombreSnapshot || "",
-        varianteKey: it.varianteKey || "",
-        varianteTituloSnapshot: it.varianteTituloSnapshot || "",
-        precioUnitSnapshot: Number(it.precioUnitSnapshot || 0),
-        cantidad: Number(it.cantidad || 1),
-        opcionesSnapshot: Array.isArray(it.opcionesSnapshot) ? it.opcionesSnapshot : [],
-        tagsHorarioSnapshot: Array.isArray(it.tagsHorarioSnapshot) ? it.tagsHorarioSnapshot : undefined,
-      })),
-      pagoElegido, // "sena" | "total" (más adelante "efectivo")
-      totalSnapshot: Number(total || 0),
-      montoAPagarSnapshot: Number(montoAPagar || 0),
-      senaSnapshot: Number(sena || 0),
-      createdAt: serverTimestamp(),
-      decisionAt: null,
-      stockProcesado: false,
-    };
+const payload = {
+  tiendaIdSnapshot: String(tiendaId), // ✅ NUEVO: guardo de qué tienda es este pedido
+  estado: "pendiente",
+  cliente: {
+    nombre: String(cliente.nombre).trim(),
+    apellido: String(cliente.apellido).trim(),
+    contacto: String(cliente.contacto).trim(),
+  },
+  mensaje: String(mensaje || "").trim(),
+  items: carrito.map((it) => ({
+    productoId: it.productoId || "",
+    nombreSnapshot: it.nombreSnapshot || "",
+    varianteKey: it.varianteKey || "",
+    varianteTituloSnapshot: it.varianteTituloSnapshot || "",
+    precioUnitSnapshot: Number(it.precioUnitSnapshot || 0),
+    cantidad: Number(it.cantidad || 1),
+    opcionesSnapshot: Array.isArray(it.opcionesSnapshot) ? it.opcionesSnapshot : [],
+    tagsHorarioSnapshot: Array.isArray(it.tagsHorarioSnapshot) ? it.tagsHorarioSnapshot : undefined,
+  })),
+  pagoElegido, // "sena" | "total" (más adelante "efectivo")
+  totalSnapshot: Number(total || 0),
+  montoAPagarSnapshot: Number(montoAPagar || 0),
+  senaSnapshot: Number(sena || 0),
+  createdAt: serverTimestamp(),
+  decisionAt: null,
+  stockProcesado: false,
+};
+
+
 
     const ref = collection(db, "tiendas", String(tiendaId), "pedidos");
     const doc = await addDoc(ref, payload);
@@ -230,8 +233,8 @@ export default function Checkout() {
       localStorage.setItem("pedido_last_id", doc.id);
       localStorage.removeItem("carrito_checkout");
     } catch (e) {
-  console.warn("No se pudo guardar en localStorage", e);
-}
+      console.warn("No se pudo guardar en localStorage", e);
+    }
 
     showToast("Pedido creado ✅");
     nav(`/t/${tiendaId}/pedido/${doc.id}`, { state: { tiendaId } });
@@ -337,19 +340,33 @@ export default function Checkout() {
         )}
       </div>
 
-      {/* Datos cliente */}
+      {/* Datos cliente ✅ (CAMBIADO SOLO ESTE BLOQUE) */}
       <div className="miniCard" style={{ marginBottom: 12 }}>
         <h4>Datos</h4>
 
-        <div className="row" style={{ gap: 10 }}>
+        {/* ✅ FIX: le damos la clase que tu @media estaba esperando */}
+        <div
+          className="__datosGridFix"
+          style={{
+            marginTop: 10,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
+            width: "100%",
+            maxWidth: "100%",
+            alignItems: "stretch",
+          }}
+        >
           <input
             className="input"
+            style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
             placeholder="Nombre *"
             value={cliente.nombre}
             onChange={(e) => setCliente((p) => ({ ...p, nombre: e.target.value }))}
           />
           <input
             className="input"
+            style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
             placeholder="Apellido *"
             value={cliente.apellido}
             onChange={(e) => setCliente((p) => ({ ...p, apellido: e.target.value }))}
@@ -358,7 +375,7 @@ export default function Checkout() {
 
         <input
           className="input"
-          style={{ marginTop: 10 }}
+          style={{ marginTop: 12, width: "100%", minWidth: 0, boxSizing: "border-box" }}
           placeholder="Contacto (WhatsApp) *"
           value={cliente.contacto}
           onChange={(e) => setCliente((p) => ({ ...p, contacto: e.target.value }))}
@@ -366,11 +383,25 @@ export default function Checkout() {
 
         <textarea
           className="input"
-          style={{ marginTop: 10, minHeight: 90 }}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            minWidth: 0,
+            boxSizing: "border-box",
+            minHeight: 120,
+            resize: "vertical",
+          }}
           placeholder="Mensaje para el local (opcional)"
           value={mensaje}
           onChange={(e) => setMensaje(e.target.value)}
         />
+
+        {/* ✅ FIX: ahora sí afecta porque la clase existe */}
+        <style>{`
+          @media (max-width: 520px){
+            .miniCard .__datosGridFix { grid-template-columns: 1fr !important; }
+          }
+        `}</style>
       </div>
 
       {/* Pago */}
