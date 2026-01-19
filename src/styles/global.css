@@ -1,0 +1,17 @@
+:root {
+  --bg: #060606;
+  --panel: #0e0e0e;
+  --text: #f4f4f4;
+  --primary: #ff7a00;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
