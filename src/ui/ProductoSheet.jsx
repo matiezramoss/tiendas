@@ -1,9 +1,26 @@
+
 // // PATH: src/ui/ProductoSheet.jsx
 // import React, { useMemo, useState } from "react";
 // import { money } from "../lib/money.js";
 
 // function firstVarKey(producto) {
 //   return producto?.variantes?.[0]?.key || "";
+// }
+
+// function pickDetalle(producto, varSel) {
+//   // 1) PRIORIDAD: detalles de la variante
+//   const dVar = String(varSel?.detalles || "").trim();
+//   if (dVar) return dVar;
+
+//   // (por si algún día lo guardás como singular en variante)
+//   const dVar2 = String(varSel?.detalle || "").trim();
+//   if (dVar2) return dVar2;
+
+//   // 2) fallback: detalle del producto
+//   const dProd = String(producto?.detalle || "").trim();
+//   if (dProd) return dProd;
+
+//   return "";
 // }
 
 // export default function ProductoSheet({ open, onClose, producto, onAdd }) {
@@ -23,6 +40,10 @@
 //   const foto = useMemo(() => {
 //     return (varSel?.fotoUrl || producto?.fotoUrlBase || "").trim();
 //   }, [varSel, producto]);
+
+//   const detalleMostrado = useMemo(() => {
+//     return pickDetalle(producto, varSel);
+//   }, [producto, varSel]);
 
 //   const extras = useMemo(() => {
 //     let sum = 0;
@@ -85,8 +106,8 @@
 
 //         {foto ? <img className="sheetFoto" src={foto} alt="" /> : null}
 
-//         {producto.detalle ? (
-//           <div className="sheetDetalle">{producto.detalle}</div>
+//         {detalleMostrado ? (
+//           <div className="sheetDetalle">{detalleMostrado}</div>
 //         ) : null}
 
 //         {/* Variantes */}
@@ -178,7 +199,6 @@
 //     </div>
 //   );
 // }
-
 // PATH: src/ui/ProductoSheet.jsx
 import React, { useMemo, useState } from "react";
 import { money } from "../lib/money.js";
@@ -192,7 +212,7 @@ function pickDetalle(producto, varSel) {
   const dVar = String(varSel?.detalles || "").trim();
   if (dVar) return dVar;
 
-  // (por si algún día lo guardás como singular en variante)
+  // (compat por si algún día lo guardás singular en variante)
   const dVar2 = String(varSel?.detalle || "").trim();
   if (dVar2) return dVar2;
 
@@ -232,7 +252,6 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
     for (const g of opciones) {
       const gk = g.key;
       const val = opts[gk];
-
       if (!val) continue;
 
       const items = Array.isArray(g.items) ? g.items : [];
@@ -270,7 +289,6 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
   if (!open || !producto) return null;
 
   function toggleGrupoItem(grupo, item) {
-    // por ahora: single choice por grupo (podemos hacer multi después si querés)
     setOpts((prev) => ({ ...prev, [grupo.key]: item.key }));
   }
 
@@ -286,9 +304,7 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
 
         {foto ? <img className="sheetFoto" src={foto} alt="" /> : null}
 
-        {detalleMostrado ? (
-          <div className="sheetDetalle">{detalleMostrado}</div>
-        ) : null}
+        {detalleMostrado ? <div className="sheetDetalle">{detalleMostrado}</div> : null}
 
         {/* Variantes */}
         {vars.length > 0 ? (
@@ -347,11 +363,7 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
               −
             </button>
             <div className="qtyNum">{cantidad}</div>
-            <button
-              type="button"
-              className="qtyBtn"
-              onClick={() => setCantidad((c) => c + 1)}
-            >
+            <button type="button" className="qtyBtn" onClick={() => setCantidad((c) => c + 1)}>
               +
             </button>
           </div>
@@ -368,6 +380,9 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
                 precioUnitSnapshot: totalUnit,
                 cantidad,
                 opcionesSnapshot: extras.snapshot,
+
+                // ✅ CLAVE para validar horarios en checkout:
+                tagsHorarioSnapshot: Array.isArray(producto?.tagsHorario) ? producto.tagsHorario : [],
               });
               onClose?.();
             }}

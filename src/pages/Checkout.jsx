@@ -1,10 +1,13 @@
 // PATH: src/pages/Checkout.jsx
 import React, { useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { app } from "../lib/firebase.js";
 import { money } from "../lib/money.js";
 
+/* ===========================
+   Helpers horario
+   =========================== */
 function parseHHMM(s) {
   const m = String(s || "").trim().match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return null;
@@ -18,43 +21,41 @@ function nowMinutes() {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+function isInRange(min, desde, hasta) {
+  const d = parseHHMM(desde);
+  const h = parseHHMM(hasta);
+  if (d == null || h == null) return true;
+  if (d <= h) return min >= d && min <= h;
+  return min >= d || min <= h;
+}
+
 function getHorarioActual(tienda) {
-  const modo = tienda?.horarios?.modo || "simple";
-  if (modo !== "simple") return { key: "todo", label: "Todo el día", ok: true };
+  const horarios = tienda?.horarios || {};
+  const m = nowMinutes();
+  const keys = Object.keys(horarios || {});
+  if (!keys.length) return { key: "todo", label: "Horario no configurado", ok: true };
 
-  const comidaDesde = parseHHMM(tienda?.horarios?.comidaDesde ?? "20:00");
-  const kioscoHasta = parseHHMM(tienda?.horarios?.kioscoHasta ?? "19:59");
-  const n = nowMinutes();
-
-  // fallback si falta algo
-  if (comidaDesde == null || kioscoHasta == null) {
-    return { key: "todo", label: "Horario no configurado", ok: true };
+  for (const k of keys) {
+    const conf = horarios?.[k];
+    if (!conf) continue;
+    if (isInRange(m, conf?.desde, conf?.hasta)) return { key: k, label: `Abierto (${k})`, ok: true };
   }
-
-  // “simple”: antes de comidaDesde => kiosco, desde comidaDesde => comida
-  if (n >= comidaDesde) return { key: "comida", label: "Comida", ok: true };
-  if (n <= kioscoHasta) return { key: "kiosco", label: "Kiosco", ok: true };
-
-  // caso raro si te dejan un hueco entre kioscoHasta y comidaDesde
   return { key: "cerrado", label: "Cerrado por horario", ok: false };
 }
 
+/* ===========================
+   Totales y pago
+   =========================== */
 function calcTotal(carrito) {
   const items = Array.isArray(carrito) ? carrito : [];
-  let sum = 0;
-  for (const it of items) {
-    const qty = Number(it?.cantidad || 1);
-    const unit = Number(it?.precioUnitSnapshot || 0);
-    sum += unit * qty;
-  }
-  return sum;
+  return items.reduce(
+    (acc, it) => acc + Number(it?.precioUnitSnapshot || 0) * Number(it?.cantidad || 1),
+    0
+  );
 }
 
-function calcMontoAPagar(tienda, total, pagoElegido) {
+function calcSena(tienda, total) {
   const p = tienda?.pago || {};
-  if (pagoElegido === "total") return total;
-
-  // seña
   const senaFija = Number(p?.senaFija || 0);
   const senaPorcentaje = Number(p?.senaPorcentaje || 0);
 
@@ -63,79 +64,123 @@ function calcMontoAPagar(tienda, total, pagoElegido) {
   else if (senaPorcentaje > 0) v = Math.round((total * senaPorcentaje) / 100);
   else v = 0;
 
-  // nunca más que el total
   return Math.min(total, Math.max(0, v));
 }
 
 export default function Checkout() {
   const nav = useNavigate();
   const loc = useLocation();
+  const { slug } = useParams();
 
-  // Esperamos que vengas con: navigate("/checkout", { state: { tienda, carrito } })
-  const tienda = loc.state?.tienda || null;
-  const carrito = loc.state?.carrito || [];
+  const tiendaState = loc.state?.tienda || null;
+  const carritoState = loc.state?.carrito || [];
 
-  // Si no vinieron por state, intentamos localStorage (opcional)
-  // (si vos no lo usás, no pasa nada)
   const tiendaLS = useMemo(() => {
-    if (tienda) return tienda;
+    if (tiendaState) return tiendaState;
     try {
       const raw = localStorage.getItem("tienda_checkout");
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
     }
-  }, [tienda]);
+  }, [tiendaState]);
 
   const carritoLS = useMemo(() => {
-    if (carrito?.length) return carrito;
+    if (carritoState?.length) return carritoState;
     try {
       const raw = localStorage.getItem("carrito_checkout");
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
     }
-  }, [carrito]);
+  }, [carritoState]);
 
-  const tiendaFinal = tiendaLS;
-  const carritoFinal = carritoLS;
+  const tienda = tiendaLS;
 
-  const horario = useMemo(() => getHorarioActual(tiendaFinal), [tiendaFinal]);
+  // ✅ carrito editable desde checkout
+  const [carrito, setCarrito] = useState(() => carritoLS);
 
-  const total = useMemo(() => calcTotal(carritoFinal), [carritoFinal]);
+  const horario = useMemo(() => getHorarioActual(tienda), [tienda]);
+  const total = useMemo(() => calcTotal(carrito), [carrito]);
 
-  const aceptaSena = !!tiendaFinal?.pago?.aceptaSena;
-  const [pagoElegido, setPagoElegido] = useState(aceptaSena ? "sena" : "total");
+  // ✅ seña real (si no hay config => 0)
+  const sena = useMemo(() => calcSena(tienda, total), [tienda, total]);
+
+  // ✅ mostrar “Seña” SOLO si hay seña configurada y es < total
+  const aceptaSenaFlag = !!tienda?.pago?.aceptaSena;
+  const puedeSena = aceptaSenaFlag && sena > 0 && sena < total;
+
+  // ✅ pago elegido: por defecto total (si hay seña, podés dejarlo en seña si querés)
+  const [pagoElegido, setPagoElegido] = useState(puedeSena ? "sena" : "total");
 
   const montoAPagar = useMemo(() => {
-    return calcMontoAPagar(tiendaFinal, total, pagoElegido);
-  }, [tiendaFinal, total, pagoElegido]);
+    if (!tienda) return 0;
+    if (pagoElegido === "sena") return sena;
+    // total (y en el futuro: efectivo)
+    return total;
+  }, [tienda, total, sena, pagoElegido]);
 
   const [cliente, setCliente] = useState({ nombre: "", apellido: "", contacto: "" });
   const [mensaje, setMensaje] = useState("");
 
-  const alias = String(tiendaFinal?.pago?.alias || "").trim();
-  const cbu = String(tiendaFinal?.pago?.cbu || "").trim();
+  const alias = String(tienda?.pago?.alias || "").trim();
+  const cbu = String(tienda?.pago?.cbu || "").trim();
+
+  const [toast, setToast] = useState("");
+  function showToast(msg) {
+    setToast(msg);
+    window.clearTimeout(showToast._t);
+    showToast._t = window.setTimeout(() => setToast(""), 1400);
+  }
+
+  async function copy(txt, label) {
+    if (!txt) return;
+    try {
+      await navigator.clipboard.writeText(txt);
+      showToast(`${label} copiado ✅`);
+    } catch {
+      showToast("No pude copiar 😕");
+    }
+  }
 
   const itemsIncompatibles = useMemo(() => {
-    // Si tu producto tiene tagsHorario en carrito, lo evaluamos.
-    // (en tu snapshot actual no estás guardando tagsHorario, así que esto solo sirve si lo agregás)
-    // Igual dejamos lógica lista.
+    if (!horario.ok) return carrito || [];
     const key = horario.key;
     if (key === "todo") return [];
-    if (key === "cerrado") return carritoFinal;
 
-    return (carritoFinal || []).filter((it) => {
+    return (carrito || []).filter((it) => {
       const tags = Array.isArray(it?.tagsHorarioSnapshot) ? it.tagsHorarioSnapshot : null;
       if (!tags) return false; // si no hay tags, lo dejamos pasar
       return !tags.includes(key);
     });
-  }, [carritoFinal, horario]);
+  }, [carrito, horario]);
+
+  function persistCarrito(next) {
+    setCarrito(next);
+    try {
+      localStorage.setItem("carrito_checkout", JSON.stringify(next));
+    } catch (e) {
+  console.warn("No se pudo guardar en localStorage", e);
+}
+  }
+
+  function quitarItemByKey(_key) {
+    const next = (carrito || []).filter((x) => x._key !== _key);
+    persistCarrito(next);
+    showToast("Producto eliminado 🧹");
+  }
+
+  function limpiarIncompatibles() {
+    const badKeys = new Set(itemsIncompatibles.map((x) => x._key));
+    const next = (carrito || []).filter((x) => !badKeys.has(x._key));
+    persistCarrito(next);
+    showToast("Listo ✅ saqué los fuera de horario");
+  }
 
   const canConfirm =
-    !!tiendaFinal &&
-    Array.isArray(carritoFinal) &&
-    carritoFinal.length > 0 &&
+    !!tienda &&
+    Array.isArray(carrito) &&
+    carrito.length > 0 &&
     horario.ok &&
     itemsIncompatibles.length === 0 &&
     String(cliente.nombre).trim() &&
@@ -143,25 +188,13 @@ export default function Checkout() {
     String(cliente.contacto).trim() &&
     alias &&
     cbu &&
-    (pagoElegido === "total" || (pagoElegido === "sena" && aceptaSena));
-
-  async function copy(txt) {
-    try {
-      await navigator.clipboard.writeText(txt);
-      alert("Copiado ✅");
-    } catch {
-      alert("No pude copiar. Copialo manual.");
-    }
-  }
+    (pagoElegido === "total" || (pagoElegido === "sena" && puedeSena));
 
   async function confirmar() {
     if (!canConfirm) return;
 
     const db = getFirestore(app);
-
-    // si tu docId de tienda es el slug, genial.
-    // Si no, guardá tiendaFinal.id y usalo acá.
-    const tiendaId = tiendaFinal?.id || tiendaFinal?.slug || "chaketortas";
+    const tiendaId = tienda?.id || tienda?.slug || slug || "chaketortas";
 
     const payload = {
       estado: "pendiente",
@@ -171,7 +204,7 @@ export default function Checkout() {
         contacto: String(cliente.contacto).trim(),
       },
       mensaje: String(mensaje || "").trim(),
-      items: carritoFinal.map((it) => ({
+      items: carrito.map((it) => ({
         productoId: it.productoId || "",
         nombreSnapshot: it.nombreSnapshot || "",
         varianteKey: it.varianteKey || "",
@@ -179,10 +212,12 @@ export default function Checkout() {
         precioUnitSnapshot: Number(it.precioUnitSnapshot || 0),
         cantidad: Number(it.cantidad || 1),
         opcionesSnapshot: Array.isArray(it.opcionesSnapshot) ? it.opcionesSnapshot : [],
+        tagsHorarioSnapshot: Array.isArray(it.tagsHorarioSnapshot) ? it.tagsHorarioSnapshot : undefined,
       })),
-      pagoElegido,
+      pagoElegido, // "sena" | "total" (más adelante "efectivo")
       totalSnapshot: Number(total || 0),
       montoAPagarSnapshot: Number(montoAPagar || 0),
+      senaSnapshot: Number(sena || 0),
       createdAt: serverTimestamp(),
       decisionAt: null,
       stockProcesado: false,
@@ -191,7 +226,6 @@ export default function Checkout() {
     const ref = collection(db, "tiendas", String(tiendaId), "pedidos");
     const doc = await addDoc(ref, payload);
 
-    // opcional: guardar para tracking
     try {
       localStorage.setItem("pedido_last_id", doc.id);
       localStorage.removeItem("carrito_checkout");
@@ -199,23 +233,40 @@ export default function Checkout() {
   console.warn("No se pudo guardar en localStorage", e);
 }
 
-
-    alert("Pedido creado ✅ (pendiente)");
-    nav(`/pedido/${doc.id}`, { state: { tiendaId } });
+    showToast("Pedido creado ✅");
+    nav(`/t/${tiendaId}/pedido/${doc.id}`, { state: { tiendaId } });
   }
 
-  if (!tiendaFinal) {
-    return (
-      <div className="loading">
-        No hay tienda cargada. Volvé a la tienda y tocá “Finalizar”.
-      </div>
-    );
+  if (!tienda) {
+    return <div className="loading">No hay tienda cargada. Volvé a la tienda y tocá “Continuar”.</div>;
   }
 
   return (
     <div style={{ padding: 14 }}>
-      <div style={{ marginBottom: 10, opacity: 0.9 }}>
-        <b>Checkout</b> · Horario: {horario.label}
+      {toast ? (
+        <div
+          style={{
+            position: "fixed",
+            left: "50%",
+            bottom: 18,
+            transform: "translateX(-50%)",
+            zIndex: 9999,
+            background: "rgba(20,20,20,.92)",
+            border: "1px solid rgba(255,255,255,.10)",
+            padding: "10px 12px",
+            borderRadius: 14,
+            color: "white",
+            fontWeight: 900,
+            boxShadow: "0 18px 60px rgba(0,0,0,.55)",
+          }}
+        >
+          {toast}
+        </div>
+      ) : null}
+
+      <div style={{ marginBottom: 10, opacity: 0.9, display: "flex", justifyContent: "space-between" }}>
+        <b>Checkout</b>
+        <span style={{ fontWeight: 900 }}>{horario.label}</span>
       </div>
 
       {!horario.ok ? (
@@ -227,29 +278,56 @@ export default function Checkout() {
       {itemsIncompatibles.length ? (
         <div className="miniCard" style={{ marginBottom: 12 }}>
           <b>Hay productos fuera de horario.</b> Sacalos del carrito para continuar.
+          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="btnGhost" type="button" onClick={() => nav(-1)}>
+              Volver
+            </button>
+            <button className="btnPrimary" type="button" onClick={limpiarIncompatibles}>
+              Sacar fuera de horario
+            </button>
+          </div>
         </div>
       ) : null}
 
       {/* Resumen */}
       <div className="miniCard" style={{ marginBottom: 12 }}>
         <h4>Tu pedido</h4>
-        {carritoFinal?.length ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {carritoFinal.map((it, idx) => (
-              <div key={idx} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ opacity: 0.95 }}>
-                  <b>{it.nombreSnapshot}</b>
-                  {it.varianteTituloSnapshot ? ` · ${it.varianteTituloSnapshot}` : ""}
-                  <div style={{ opacity: 0.75, fontSize: 12 }}>
-                    x{it.cantidad} · $ {money(it.precioUnitSnapshot)}
+
+        {carrito?.length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {carrito.map((it) => {
+              const bad = itemsIncompatibles.some((x) => x._key === it._key);
+              return (
+                <div key={it._key} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ opacity: 0.95 }}>
+                    <b>
+                      {it.nombreSnapshot}
+                      {it.varianteTituloSnapshot ? ` · ${it.varianteTituloSnapshot}` : ""}
+                      {bad ? <span style={{ marginLeft: 8, opacity: 0.8 }}>⛔</span> : null}
+                    </b>
+
+                    <div style={{ opacity: 0.75, fontSize: 12 }}>
+                      x{it.cantidad} · $ {money(it.precioUnitSnapshot)}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="drawerRemove"
+                      style={{ marginTop: 6 }}
+                      onClick={() => quitarItemByKey(it._key)}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+
+                  <div style={{ fontWeight: 900 }}>
+                    $ {money(Number(it.precioUnitSnapshot || 0) * Number(it.cantidad || 1))}
                   </div>
                 </div>
-                <div style={{ fontWeight: 900 }}>
-                  $ {money(Number(it.precioUnitSnapshot || 0) * Number(it.cantidad || 1))}
-                </div>
-              </div>
-            ))}
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10 }}>
+              );
+            })}
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
               <b>Total</b>
               <b>$ {money(total)}</b>
             </div>
@@ -300,13 +378,13 @@ export default function Checkout() {
         <h4>Pago</h4>
 
         <div className="chipRow" style={{ marginTop: 8 }}>
-          {aceptaSena ? (
+          {puedeSena ? (
             <button
               type="button"
               className={`chip ${pagoElegido === "sena" ? "on" : ""}`}
               onClick={() => setPagoElegido("sena")}
             >
-              Seña · $ {money(calcMontoAPagar(tiendaFinal, total, "sena"))}
+              Seña · $ {money(sena)}
             </button>
           ) : null}
 
@@ -319,13 +397,19 @@ export default function Checkout() {
           </button>
         </div>
 
+        {!puedeSena && aceptaSenaFlag ? (
+          <div style={{ marginTop: 10, opacity: 0.75, fontSize: 12 }}>
+            * Seña habilitada pero no configurada (senaFija / senaPorcentaje). Por eso no aparece.
+          </div>
+        ) : null}
+
         <div style={{ marginTop: 12, opacity: 0.9 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
             <div>
               <div style={{ fontWeight: 900 }}>Alias</div>
               <div style={{ opacity: 0.85 }}>{alias || "—"}</div>
             </div>
-            <button className="btnGhost" type="button" onClick={() => copy(alias)} disabled={!alias}>
+            <button className="btnGhost" type="button" onClick={() => copy(alias, "Alias")} disabled={!alias}>
               Copiar
             </button>
           </div>
@@ -335,7 +419,7 @@ export default function Checkout() {
               <div style={{ fontWeight: 900 }}>CBU</div>
               <div style={{ opacity: 0.85 }}>{cbu || "—"}</div>
             </div>
-            <button className="btnGhost" type="button" onClick={() => copy(cbu)} disabled={!cbu}>
+            <button className="btnGhost" type="button" onClick={() => copy(cbu, "CBU")} disabled={!cbu}>
               Copiar
             </button>
           </div>

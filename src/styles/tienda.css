@@ -786,4 +786,308 @@
     display: none;
   }
 }
+/* =========================
+   FAB CARRITO
+   ========================= */
+.cartFab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 50;
 
+  display: inline-flex;
+  align-items: center;
+  /* gap: 12px; Un poco más de aire mejora la lectura */
+
+  padding: 10px 18px; /* Proporciones más equilibradas */
+  border-radius: 999px;
+
+  /* Borde más sutil y luz superior para efecto 3D glass */
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 122, 0, .18);  
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+
+  color: #ffffff;
+  /* Sombra más profunda y suave */
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 
+              0 0 0 1px rgba(255, 255, 255, 0.05);
+  
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.25s cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform;
+}
+
+/* Efectos de Hover y Click mejorados */
+.cartFab:hover {
+  transform: translateY(-4px);
+  background: rgba(28, 28, 28, 0.85);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+}
+
+.cartFab:active {
+  transform: translateY(0) scale(0.96);
+  filter: brightness(1.2);
+}
+
+.cartFabIcon {
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.cartFabTotal {
+  font-weight: 700; /* 900 a veces se empasta en pantallas pequeñas */
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.cartFabBadge {
+  position: absolute;
+  top: -6px;
+  right: -2px; /* Badge flotante estilo notificación clásica */
+  
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 11px;
+
+  background: #ff7a00; /* Color sólido para mejor contraste */
+  color: #fff;
+  border: 2px solid #141414; /* Separa el badge del cuerpo del botón */
+  box-shadow: 0 4px 10px rgba(255, 122, 0, 0.3);
+}
+
+/* Ajuste para pantallas móviles */
+@media (max-width: 480px) {
+  .cartFab {
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    padding: 12px 16px;
+  }
+}
+/* PATH: src/styles/tienda.css */
+
+/* ... TU CSS EXISTENTE ... */
+
+/* =========================
+   CHECKOUT (PRO)
+   ========================= */
+
+.checkoutWrap{
+  padding: 14px;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.checkoutTop{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.checkoutTitle{
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: .02em;
+}
+
+.checkoutPill{
+  padding: 8px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 12px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  white-space: nowrap;
+}
+.checkoutPill.ok{
+  border-color: rgba(255,122,0,.45);
+  background: rgba(255,122,0,.12);
+}
+.checkoutPill.bad{
+  border-color: rgba(255,255,255,.20);
+  background: rgba(255,255,255,.06);
+  opacity: .9;
+}
+
+/* mini cards reutilizables */
+.miniCard{
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.05);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.25);
+  margin-bottom: 12px;
+}
+.miniCardTitle{
+  font-weight: 900;
+  margin-bottom: 10px;
+  letter-spacing: .01em;
+}
+.miniCard.warn{
+  border-color: rgba(255,122,0,.35);
+  background: rgba(255,122,0,.10);
+}
+
+/* lista resumen */
+.checkoutList{
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.checkoutRow{
+  display:flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(255,255,255,.10);
+}
+.checkoutName{
+  font-weight: 900;
+  font-size: 13px;
+}
+.checkoutSub{
+  opacity: .75;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.checkoutRight{
+  font-weight: 900;
+  white-space: nowrap;
+}
+.checkoutTotalRow{
+  display:flex;
+  justify-content: space-between;
+  align-items:center;
+  margin-top: 10px;
+  font-weight: 900;
+}
+
+/* inputs pro */
+.row{
+  display:flex;
+  gap: 10px;
+}
+.input{
+  width: 100%;
+  border-radius: 14px;
+  padding: 12px 12px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  outline: none;
+  font-weight: 700;
+  font-size: 13px;
+  margin: 10px;
+}
+.input::placeholder{
+  color: rgba(255,255,255,.55);
+  font-weight: 700;
+}
+.input:focus{
+  border-color: rgba(255,122,0,.55);
+  box-shadow: 0 0 0 3px rgba(255,122,0,.12);
+}
+.textarea{
+  margin-top: 10px;
+  min-height: 110px;
+  resize: vertical;
+}
+
+/* pago */
+.payGrid{
+  margin-top: 10px;
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.payRow{
+  display:flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.payInfo{
+  flex: 1;
+  border-radius: 14px;
+  padding: 12px 12px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.06);
+}
+.payLabel{
+  font-weight: 900;
+  font-size: 12px;
+  opacity: .9;
+  margin-bottom: 6px;
+}
+.payValue{
+  font-weight: 800;
+  opacity: .95;
+  word-break: break-word;
+}
+
+.copyBtn{
+  width: 120px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  font-weight: 900;
+  cursor: pointer;
+}
+.copyBtn:disabled{
+  opacity: .55;
+  cursor: not-allowed;
+}
+.copyBtn:not(:disabled):hover{
+  border-color: rgba(255,122,0,.45);
+  background: rgba(255,122,0,.10);
+}
+
+.payNow{
+  margin-top: 4px;
+  font-weight: 900;
+  opacity: .95;
+}
+
+/* acciones */
+.checkoutActions{
+  display:flex;
+  gap: 10px;
+}
+
+/* toast */
+.copyToast{
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 16px;
+  z-index: 9999;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(12,12,12,.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--text);
+  font-weight: 900;
+  font-size: 12px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.45);
+}
+
+/* mobile */
+@media (max-width: 720px){
+  .row{ flex-direction: column; }
+  .copyBtn{ width: 120px; }
+}

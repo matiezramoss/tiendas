@@ -1,19 +1,27 @@
 // PATH: src/pages/TiendaPublica.jsx
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 
 import { getTiendaBySlug, listProductos } from "../lib/db.js";
 import { applyTheme } from "../lib/theme.js";
 import { isProductoDisponibleAhora } from "../lib/time.js";
 
-
 import TiendaLayout from "../ui/TiendaLayout.jsx";
 import MenuSecciones from "../ui/MenuSecciones.jsx";
 import ProductoSheet from "../ui/ProductoSheet.jsx";
 import CarritoDrawer from "../ui/CarritoDrawer.jsx";
+import { money } from "../lib/money.js";
+
+function calcTotal(carrito) {
+  return (carrito || []).reduce(
+    (acc, it) => acc + Number(it?.precioUnitSnapshot || 0) * Number(it?.cantidad || 1),
+    0
+  );
+}
 
 export default function TiendaPublica() {
   const { slug } = useParams();
+  const nav = useNavigate();
 
   const [tienda, setTienda] = useState(null);
   const [productos, setProductos] = useState([]);
@@ -54,28 +62,24 @@ export default function TiendaPublica() {
     };
   }, [slug]);
 
-  const productosPorId = useMemo(() => {
-    const m = new Map();
-    for (const p of productos) m.set(p.id, p);
-    return m;
-  }, [productos]);
+  const totalCarrito = useMemo(() => calcTotal(carrito), [carrito]);
+  const cantItems = useMemo(() => (carrito || []).reduce((a, it) => a + Number(it?.cantidad || 1), 0), [carrito]);
 
-function abrirProducto(p) {
-  if (!isProductoDisponibleAhora(p, tienda)) {
-    alert("Este producto no está disponible en este horario.");
-    return;
+  function abrirProducto(p) {
+    if (!isProductoDisponibleAhora(p, tienda)) {
+      alert("Este producto no está disponible en este horario.");
+      return;
+    }
+    setProductoSel(p);
+    setSheetOpen(true);
   }
-  setProductoSel(p);
-  setSheetOpen(true);
-}
-
 
   function agregarAlCarrito(item) {
     if (!isProductoDisponibleAhora(productoSel, tienda)) {
-  alert("Este producto no está disponible en este horario.");
-  return;
-}
-    // item: { productoId, nombreSnapshot, varianteKey, varianteTituloSnapshot, precioUnitSnapshot, cantidad, opcionesSnapshot }
+      alert("Este producto no está disponible en este horario.");
+      return;
+    }
+
     setCarrito((prev) => {
       const key = [
         item.productoId,
@@ -86,11 +90,15 @@ function abrirProducto(p) {
       const i = prev.findIndex((x) => x._key === key);
       if (i >= 0) {
         const copy = [...prev];
-        copy[i] = { ...copy[i], cantidad: (copy[i].cantidad || 1) + (item.cantidad || 1) };
+        copy[i] = {
+          ...copy[i],
+          cantidad: (copy[i].cantidad || 1) + (item.cantidad || 1),
+        };
         return copy;
       }
       return [...prev, { ...item, _key: key }];
     });
+
     setCarritoOpen(true);
   }
 
@@ -100,6 +108,11 @@ function abrirProducto(p) {
 
   function vaciarCarrito() {
     setCarrito([]);
+  }
+
+  function irCheckout() {
+    // ✅ ruta con slug (la tuya)
+    nav(`/t/${slug}/checkout`, { state: { tienda, carrito } });
   }
 
   if (error) {
@@ -123,14 +136,36 @@ function abrirProducto(p) {
         onAdd={agregarAlCarrito}
       />
 
+      {/* ✅ BOTÓN FLOTANTE DEL CARRITO (se oculta cuando el drawer está abierto) */}
+      {!carritoOpen ? (
+        <button
+          type="button"
+          className="cartFab"
+          onClick={() => setCarritoOpen(true)}
+          aria-label="Abrir carrito"
+        >
+          <span className="cartFabIcon" aria-hidden="true">🛒</span>
+
+          {cantItems > 0 ? (
+            <span className="cartFabBadge">{cantItems}</span>
+          ) : null}
+
+          {totalCarrito > 0 ? (
+            <span className="cartFabTotal">$ {money(totalCarrito)}</span>
+          ) : (
+            <span className="cartFabTotal" style={{ opacity: 0.75 }}></span>
+          )}
+        </button>
+      ) : null}
+
       <CarritoDrawer
         open={carritoOpen}
         onClose={() => setCarritoOpen(false)}
         tienda={tienda}
         carrito={carrito}
-        productosPorId={productosPorId}
         onRemove={quitarDelCarrito}
         onClear={vaciarCarrito}
+        onCheckout={irCheckout}
       />
     </TiendaLayout>
   );
