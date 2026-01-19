@@ -126,7 +126,7 @@ export default function TrackingPedido() {
         </div>
 
         {etaMin > 0 ? (
-          <div style={{ marginTop: 8, fontWeight: 900 }}>⏱️ ETA: {etaMin} minutos</div>
+          <div style={{ marginTop: 8, fontWeight: 900 }}>⏱️ Retirar en {etaMin} minutos</div>
         ) : null}
 
         {pedido?.mensaje ? (
