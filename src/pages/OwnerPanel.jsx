@@ -12,16 +12,14 @@ import {
   serverTimestamp,
   where,
   limit,
-  deleteDoc, // ✅ NEW
+  deleteDoc,
 } from "firebase/firestore";
-import { app } from "../lib/firebase.js";
-import { money } from "../lib/money.js";
+import { signOut } from "firebase/auth";
 
-function fmtWhen(ts) {
-  if (!ts?.seconds) return "";
-  const d = new Date(ts.seconds * 1000);
-  return d.toLocaleString();
-}
+import { app, auth } from "../lib/firebase.js";
+import { useAdminSession } from "../lib/adminSession.js";
+import { money } from "../lib/money.js";
+import { openWhatsAppTo } from "../lib/whatsapp.js";
 
 function calcTotalPedido(p) {
   const items = Array.isArray(p?.items) ? p.items : [];
@@ -31,11 +29,8 @@ function calcTotalPedido(p) {
   );
 }
 
-/* ===========================
-   ✅ NEW: helpers de día / filtros
-   =========================== */
 function isTodayFromTs(ts) {
-  if (!ts?.seconds) return true; // si falta fecha, NO ocultamos
+  if (!ts?.seconds) return true;
   const d = new Date(ts.seconds * 1000);
   const now = new Date();
   return (
@@ -57,7 +52,7 @@ function estadoInfo(estado) {
 }
 
 function pagoInfo(pedido, total) {
-  const pago = String(pedido?.pagoElegido || "").toLowerCase(); // sena | total | efectivo
+  const pago = String(pedido?.pagoElegido || "").toLowerCase();
   const pagado = Number(pedido?.montoAPagarSnapshot || 0);
 
   if (pago === "sena") {
@@ -77,7 +72,6 @@ function pagoInfo(pedido, total) {
     };
   }
 
-  // default total
   return {
     badge: "TOTAL",
     line1: `Pagó $ ${money(total)}`,
@@ -85,162 +79,184 @@ function pagoInfo(pedido, total) {
   };
 }
 
-function PedidoCard({ pedido, onAction }) {
+/* ===========================
+   CARD (modo cocina) - simple y clara
+   =========================== */
+function PedidoCard({ pedido, onAction, tiendaId }) {
   const total = calcTotalPedido(pedido);
   const est = estadoInfo(pedido?.estado);
   const pago = pagoInfo(pedido, total);
 
-  const nombre = `${pedido?.cliente?.nombre || ""} ${pedido?.cliente?.apellido || ""}`.trim() || "—";
+  const nombre =
+    `${pedido?.cliente?.nombre || ""} ${pedido?.cliente?.apellido || ""}`.trim() || "—";
   const contacto = pedido?.cliente?.contacto || "—";
-  const when = fmtWhen(pedido?.createdAt) || "—";
 
   return (
     <div className="miniCard" style={{ marginBottom: 12, padding: 14 }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+      {/* HEADER */}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 950, fontSize: 16, lineHeight: 1.15, wordBreak: "break-word" }}>
+          <div style={{ fontWeight: 950, fontSize: 18, lineHeight: 1.1, wordBreak: "break-word" }}>
             {nombre}
           </div>
-          <div style={{ marginTop: 6, opacity: 0.8, fontSize: 12, lineHeight: 1.35 }}>
-            <div>📱 {contacto}</div>
-            <div>🕒 {when}</div>
+          <div style={{ marginTop: 6, opacity: 0.9, fontSize: 13 }}>
+            📱 <b>{contacto}</b>
+            {Number(pedido?.etaMin || 0) > 0 ? (
+              <span style={{ marginLeft: 10, opacity: 0.9 }}>⏱ {pedido.etaMin}m</span>
+            ) : null}
           </div>
         </div>
 
-        <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
-            <span style={{ fontSize: 12, opacity: 0.9 }}>
-              {est.icon} <b>{est.label}</b>
-            </span>
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 950,
-                letterSpacing: 0.6,
-                padding: "6px 10px",
-                borderRadius: 999,
-                background: "rgba(255,255,255,.06)",
-                border: "1px solid rgba(255,255,255,.10)",
-              }}
-            >
-              {pago.badge}
-            </span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
+          <div
+            style={{
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,.06)",
+              border: "1px solid rgba(255,255,255,.10)",
+              fontWeight: 950,
+              fontSize: 13,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {est.icon} {est.label}
           </div>
 
-          <div style={{ marginTop: 10, fontWeight: 950, fontSize: 18 }}>$ {money(total)}</div>
-
-          <div style={{ marginTop: 4, opacity: 0.82, fontSize: 12, lineHeight: 1.25 }}>
-            <div>{pago.line1}</div>
-            <div>{pago.line2}</div>
-          </div>
+          <button
+            className="btnGhost"
+            type="button"
+            onClick={() =>
+              openWhatsAppTo({
+                pedido,
+                tiendaId,
+                tipo: "confirmacion",
+                money,
+                calcTotalPedido,
+                pagoInfo,
+              })
+            }
+          >
+            💬 WA
+          </button>
         </div>
       </div>
 
-      {/* Mensaje */}
-      {pedido?.mensaje ? (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 14,
-            background: "rgba(255,255,255,.04)",
-            border: "1px solid rgba(255,255,255,.08)",
-          }}
-        >
-          <div style={{ opacity: 0.75, fontSize: 12, marginBottom: 6, fontWeight: 900 }}>Mensaje</div>
-          <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35, wordBreak: "break-word" }}>
-            “{pedido.mensaje}”
-          </div>
-        </div>
-      ) : null}
-
-      {/* Items */}
+      {/* ITEMS */}
       <div style={{ marginTop: 12 }}>
-        <div style={{ opacity: 0.75, fontSize: 12, marginBottom: 8, fontWeight: 900 }}>Pedido</div>
+        <div style={{ opacity: 0.75, fontSize: 12, marginBottom: 8, fontWeight: 900 }}>PEDIDO</div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {(pedido?.items || []).map((it, idx) => {
             const qty = Number(it?.cantidad || 1);
-            const unit = Number(it?.precioUnitSnapshot || 0);
-            const sub = unit * qty;
+            const name = String(it?.nombreSnapshot || "Item");
+            const varTxt = it?.varianteTituloSnapshot ? ` · ${it.varianteTituloSnapshot}` : "";
 
             return (
               <div
                 key={`${it?.productoId || "x"}-${idx}`}
-                style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  gap: 12,
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,.04)",
+                  border: "1px solid rgba(255,255,255,.08)",
+                }}
               >
-                <div style={{ minWidth: 0, opacity: 0.95 }}>
-                  <div style={{ fontWeight: 900, wordBreak: "break-word" }}>
-                    {it?.nombreSnapshot}
-                    {it?.varianteTituloSnapshot ? (
-                      <span style={{ opacity: 0.8, fontWeight: 800 }}> · {it.varianteTituloSnapshot}</span>
-                    ) : null}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 950, fontSize: 15, wordBreak: "break-word" }}>
+                    <span style={{ fontSize: 18, marginRight: 8 }}>x{qty}</span>
+                    {name}
                   </div>
-                  <div style={{ opacity: 0.72, fontSize: 12, marginTop: 2 }}>
-                    x{qty} · $ {money(unit)} c/u
-                  </div>
+                  {varTxt ? (
+                    <div style={{ marginTop: 4, opacity: 0.85, fontSize: 13, fontWeight: 800 }}>
+                      {varTxt}
+                    </div>
+                  ) : null}
                 </div>
 
-                <div style={{ fontWeight: 950, flexShrink: 0 }}>$ {money(sub)}</div>
+                <div style={{ opacity: 0.7, fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" }}>
+                  $ {money(Number(it?.precioUnitSnapshot || 0) * qty)}
+                </div>
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Footer: ETA + actions */}
-      <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ opacity: 0.75, fontSize: 12 }}>
-          {Number(pedido?.etaMin || 0) > 0 ? (
-            <span>
-              ⏱ Tiempo estimado <b>{pedido.etaMin}m</b>
-            </span>
-          ) : (
-            <span>⏱ Sin ETA</span>
-          )}
+      {/* NOTA */}
+      {pedido?.mensaje ? (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            borderRadius: 14,
+            background: "rgba(255,122,0,.10)",
+            border: "1px solid rgba(255,122,0,.28)",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.9, marginBottom: 6 }}>📝 NOTA</div>
+          <div style={{ fontSize: 14, fontWeight: 900, lineHeight: 1.3, wordBreak: "break-word" }}>
+            {pedido.mensaje}
+          </div>
+        </div>
+      ) : null}
+
+      {/* PAGO + TOTAL */}
+      <div
+        style={{
+          marginTop: 14,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ opacity: 0.9, fontSize: 13 }}>
+          <b>{pago.badge}</b> · {pago.line1}
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {pedido?.estado === "pendiente" ? (
-            <>
-              <button className="btnPrimary" type="button" onClick={() => onAction("aceptar", pedido)}>
-                Aceptar
-              </button>
-              <button className="btnGhost" type="button" onClick={() => onAction("rechazar", pedido)}>
-                Rechazar
-              </button>
-            </>
-          ) : null}
-
-          {pedido?.estado === "aceptado" || pedido?.estado === "en_preparacion" ? (
-            <>
-              <button className="btnPrimary" type="button" onClick={() => onAction("listo", pedido)}>
-                Listo para retirar
-              </button>
-              <button className="btnGhost" type="button" onClick={() => onAction("en5", pedido)}>
-                En 5 minutos está listo
-              </button>
-            </>
-          ) : null}
-
-          {pedido?.estado === "listo" ? (
-            <button className="btnPrimary" type="button" onClick={() => onAction("entregado", pedido)}>
-              Entregado / Cerrado
-            </button>
-          ) : null}
-
-          {/* ✅ NEW: borrar pedidos pasados (solo rechazado/entregado) */}
-          {pedido?.estado === "rechazado" || pedido?.estado === "entregado" ? (
-            <button className="btnGhost" type="button" onClick={() => onAction("borrar", pedido)}>
-              ❌ Borrar
-            </button>
-          ) : null}
-        </div>
+        <div style={{ fontWeight: 950, fontSize: 16 }}>$ {money(total)}</div>
       </div>
 
-      <div style={{ marginTop: 10, opacity: 0.7, fontSize: 12 }}>
-        Estado: <b>{pedido?.estado}</b>
+      {/* ACCIONES */}
+      <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {pedido?.estado === "pendiente" ? (
+          <>
+            <button className="btnPrimary" type="button" onClick={() => onAction("aceptar", pedido)}>
+              ✅ Aceptar
+            </button>
+            <button className="btnGhost" type="button" onClick={() => onAction("rechazar", pedido)}>
+              ⛔ Rechazar
+            </button>
+          </>
+        ) : null}
+
+        {pedido?.estado === "aceptado" || pedido?.estado === "en_preparacion" ? (
+          <>
+            <button className="btnPrimary" type="button" onClick={() => onAction("listo", pedido)}>
+              ✅ Listo para retirar
+            </button>
+            <button className="btnGhost" type="button" onClick={() => onAction("en5", pedido)}>
+              ⏱ En 5 minutos
+            </button>
+          </>
+        ) : null}
+
+        {pedido?.estado === "listo" ? (
+          <button className="btnPrimary" type="button" onClick={() => onAction("entregado", pedido)}>
+            ⚫ Entregado / Cerrar
+          </button>
+        ) : null}
+
+        {pedido?.estado === "rechazado" || pedido?.estado === "entregado" ? (
+          <button className="btnGhost" type="button" onClick={() => onAction("borrar", pedido)}>
+            ❌ Borrar
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -250,9 +266,7 @@ export default function OwnerPanel() {
   const db = getFirestore(app);
   const nav = useNavigate();
 
-  // ⚠️ por ahora fijamos tiendaId.
-  // después lo hacemos multi-tiendas con login.
-  const [tiendaId] = useState("chaketortas");
+  const { loading, userDoc, tiendaId } = useAdminSession();
 
   const [pendientes, setPendientes] = useState([]);
   const [encurso, setEncurso] = useState([]);
@@ -263,8 +277,6 @@ export default function OwnerPanel() {
 
     const base = collection(db, "tiendas", String(tiendaId), "pedidos");
 
-    // 🔸 Importante: estas queries suelen pedir índices compuestos:
-    // (estado ASC, createdAt DESC) para cada grupo. Si Firebase te los pide, los creás desde el link.
     const qPend = query(base, where("estado", "==", "pendiente"), orderBy("createdAt", "desc"), limit(80));
 
     const qEnCurso = query(
@@ -306,14 +318,8 @@ export default function OwnerPanel() {
     };
   }, [db, tiendaId]);
 
-  /* ===========================
-     ✅ NEW: ocultar pasados si el día ya pasó (solo UI)
-     =========================== */
   const pasadosHoy = useMemo(() => pasados.filter((p) => isTodayFromTs(p?.createdAt)), [pasados]);
 
-  /* ===========================
-     ✅ NEW: resumen de ganancias (solo entregados de hoy)
-     =========================== */
   const entregadosHoy = useMemo(
     () => pasadosHoy.filter((p) => String(p?.estado || "").toLowerCase() === "entregado"),
     [pasadosHoy]
@@ -352,7 +358,7 @@ export default function OwnerPanel() {
   }, [entregadosHoy]);
 
   async function onAction(type, pedido) {
-    if (!pedido?.id) return;
+    if (!pedido?.id || !tiendaId) return;
 
     const ref = doc(db, "tiendas", String(tiendaId), "pedidos", String(pedido.id));
 
@@ -379,6 +385,15 @@ export default function OwnerPanel() {
         estado: "en_preparacion",
         etaMin: 5,
       });
+
+      openWhatsAppTo({
+        pedido,
+        tiendaId,
+        tipo: "en5",
+        money,
+        calcTotalPedido,
+        pagoInfo,
+      });
       return;
     }
 
@@ -387,6 +402,15 @@ export default function OwnerPanel() {
         estado: "listo",
         etaMin: 0,
         readyAt: serverTimestamp(),
+      });
+
+      openWhatsAppTo({
+        pedido,
+        tiendaId,
+        tipo: "listo",
+        money,
+        calcTotalPedido,
+        pagoInfo,
       });
       return;
     }
@@ -399,7 +423,6 @@ export default function OwnerPanel() {
       return;
     }
 
-    /* ✅ NEW: borrar (rechazado/entregado) */
     if (type === "borrar") {
       const ok = window.confirm("¿Borrar este pedido? Esta acción no se puede deshacer.");
       if (!ok) return;
@@ -408,22 +431,34 @@ export default function OwnerPanel() {
     }
   }
 
+  async function onLogout() {
+    await signOut(auth);
+    nav("/admin/login", { replace: true });
+  }
+
+  if (loading) return <div className="loading">Cargando…</div>;
+  if (!userDoc || !tiendaId) return <div className="loading">No autorizado.</div>;
+
   return (
     <div style={{ padding: 14, maxWidth: 920, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
         <div>
           <div style={{ fontWeight: 900, fontSize: 18 }}>Panel del local</div>
-          <div style={{ opacity: 0.75, fontSize: 13 }}>Tienda: {tiendaId}</div>
+          <div style={{ opacity: 0.75, fontSize: 13 }}>
+            Tienda: {tiendaId} {auth?.currentUser?.email ? `· ${auth.currentUser.email}` : ""}
+          </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <button className="btnGhost" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
             Ver tienda
+          </button>
+          <button className="btnGhost" type="button" onClick={onLogout}>
+            Cerrar sesión
           </button>
         </div>
       </div>
 
-      {/* ✅ NEW: Resumen de hoy */}
       <div className="miniCard" style={{ marginTop: 14, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
@@ -460,18 +495,14 @@ export default function OwnerPanel() {
             <div style={{ fontWeight: 950 }}>$ {money(resumenHoy.totalVendido)}</div>
           </div>
         </div>
-
-        <style>{`
-          @media (max-width: 520px){
-            .miniCard .__gridResumenHoy { grid-template-columns: 1fr !important; }
-          }
-        `}</style>
       </div>
 
       <div style={{ marginTop: 16 }}>
         <h3 style={{ margin: "14px 0 10px" }}>🟠 Pedidos pendientes ({pendientes.length})</h3>
         {pendientes.length ? (
-          pendientes.map((p) => <PedidoCard key={p.id} pedido={p} onAction={onAction} />)
+          pendientes.map((p) => (
+            <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
+          ))
         ) : (
           <div style={{ opacity: 0.7 }}>No hay pendientes.</div>
         )}
@@ -480,7 +511,9 @@ export default function OwnerPanel() {
       <div style={{ marginTop: 18 }}>
         <h3 style={{ margin: "14px 0 10px" }}>🟢 En preparación / Listos ({encurso.length})</h3>
         {encurso.length ? (
-          encurso.map((p) => <PedidoCard key={p.id} pedido={p} onAction={onAction} />)
+          encurso.map((p) => (
+            <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
+          ))
         ) : (
           <div style={{ opacity: 0.7 }}>No hay pedidos activos.</div>
         )}
@@ -489,12 +522,13 @@ export default function OwnerPanel() {
       <div style={{ marginTop: 18 }}>
         <h3 style={{ margin: "14px 0 10px" }}>⚫ Pedidos pasados ({pasadosHoy.length})</h3>
         {pasadosHoy.length ? (
-          pasadosHoy.map((p) => <PedidoCard key={p.id} pedido={p} onAction={onAction} />)
+          pasadosHoy.map((p) => (
+            <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
+          ))
         ) : (
           <div style={{ opacity: 0.7 }}>No hay pasados (hoy).</div>
         )}
 
-        {/* hint suave por si “desaparecieron” */}
         {pasados.length > pasadosHoy.length ? (
           <div style={{ marginTop: 10, opacity: 0.55, fontSize: 12 }}>
             * Los pedidos pasados de días anteriores se están ocultando automáticamente.

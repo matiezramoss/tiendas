@@ -5,6 +5,9 @@ import TiendaPublica from "../pages/TiendaPublica";
 import Checkout from "../pages/Checkout";
 import TrackingPedido from "../pages/TrackingPedido";
 import OwnerPanel from "../pages/OwnerPanel";
+import AdminLogin from "../pages/AdminLogin";
+
+import { useAdminSession } from "../lib/adminSession.js";
 
 function RedirectCheckoutToDefaultSlug() {
   return <Navigate to="/t/chaketortas/checkout" replace />;
@@ -15,6 +18,15 @@ function RedirectPedidoToDefaultSlug() {
   const parts = String(loc.pathname || "").split("/");
   const id = parts[2] || "";
   return <Navigate to={`/t/chaketortas/pedido/${id}`} replace />;
+}
+
+function RequireAdmin({ children }) {
+  const { loading, userDoc } = useAdminSession();
+
+  if (loading) return <div className="loading">Cargando…</div>;
+  if (!userDoc) return <Navigate to="/admin/login" replace />;
+
+  return children;
 }
 
 export function Routes() {
@@ -32,7 +44,17 @@ export function Routes() {
       <Route path="/t/:slug" element={<TiendaPublica />} />
       <Route path="/t/:slug/checkout" element={<Checkout />} />
       <Route path="/t/:slug/pedido/:id" element={<TrackingPedido />} />
-      <Route path="/owner" element={<OwnerPanel />} />
+
+      {/* ✅ admin */}
+      <Route path="/admin/login" element={<AdminLogin />} />
+      <Route
+        path="/owner"
+        element={
+          <RequireAdmin>
+            <OwnerPanel />
+          </RequireAdmin>
+        }
+      />
 
       {/* fallback */}
       <Route path="*" element={<div className="loading">Ruta no encontrada</div>} />
