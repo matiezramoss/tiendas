@@ -61,13 +61,13 @@ export function buildWhatsAppMessage({
   let extra = "";
 
   if (tipo === "confirmacion") {
-    header = "✅ Confirmación de pedido";
-    extra = "📌 Si necesitás cambiar algo, respondé este mensaje.";
+    header = "🔥 Confirmación de pedido";
+    extra = "🔥 Si necesitás cambiar algo, respondé este mensaje.";
   } else if (tipo === "en5") {
     header = "🟡 Pedido en preparación";
     extra = "⏱ Estimado: en 5 minutos está listo.";
   } else if (tipo === "listo") {
-    header = "✅ Pedido listo para retirar";
+    header = "🔥 Pedido listo para retirar";
     extra = "📍 Podés pasar a retirarlo cuando quieras.";
   } else {
     header = "📦 Pedido";

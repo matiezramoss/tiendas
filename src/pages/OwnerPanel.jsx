@@ -1,5 +1,5 @@
 // PATH: src/pages/OwnerPanel.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getFirestore,
@@ -21,6 +21,9 @@ import { useAdminSession } from "../lib/adminSession.js";
 import { money } from "../lib/money.js";
 import { openWhatsAppTo } from "../lib/whatsapp.js";
 
+/* ===========================
+   HELPERS
+   =========================== */
 function calcTotalPedido(p) {
   const items = Array.isArray(p?.items) ? p.items : [];
   return items.reduce(
@@ -79,6 +82,61 @@ function pagoInfo(pedido, total) {
   };
 }
 
+function tsToMs(ts) {
+  if (!ts?.seconds) return 0;
+  return Number(ts.seconds) * 1000 + Math.floor(Number(ts.nanoseconds || 0) / 1e6);
+}
+
+/* ===========================
+   NOTIF + SONIDO (solo panel)
+   =========================== */
+function playBeep() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = 880;
+
+    g.gain.value = 0.0001;
+    o.connect(g);
+    g.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+    o.start(now);
+    o.stop(now + 0.16);
+
+    setTimeout(() => {
+      try {
+        ctx.close();
+      } catch {console.log('first')}
+    }, 250);
+  } catch {console.log('first')}
+}
+
+function notifyNewOrder({ title, body }) {
+  try {
+    if (!("Notification" in window)) return;
+
+    if (Notification.permission === "granted") {
+      new Notification(title, { body });
+      return;
+    }
+
+    if (Notification.permission === "default") {
+      Notification.requestPermission().then((perm) => {
+        if (perm === "granted") new Notification(title, { body });
+      });
+    }
+  } catch {console.log('first')}
+}
+
 /* ===========================
    CARD (modo cocina) - simple y clara
    =========================== */
@@ -89,36 +147,25 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
 
   const nombre =
     `${pedido?.cliente?.nombre || ""} ${pedido?.cliente?.apellido || ""}`.trim() || "—";
-  const contacto = pedido?.cliente?.contacto || "—";
+  const contacto = String(pedido?.cliente?.contacto || "—");
+
+  const eta = Number(pedido?.etaMin || 0);
+  const nota = String(pedido?.mensaje || "").trim();
 
   return (
-    <div className="miniCard" style={{ marginBottom: 12, padding: 14 }}>
+    <div className="miniCard cocinaCard">
       {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 950, fontSize: 18, lineHeight: 1.1, wordBreak: "break-word" }}>
-            {nombre}
-          </div>
-          <div style={{ marginTop: 6, opacity: 0.9, fontSize: 13 }}>
-            📱 <b>{contacto}</b>
-            {Number(pedido?.etaMin || 0) > 0 ? (
-              <span style={{ marginLeft: 10, opacity: 0.9 }}>⏱ {pedido.etaMin}m</span>
-            ) : null}
+      <div className="cocinaHeader">
+        <div className="cocinaWho">
+          <div className="cocinaName">{nombre}</div>
+          <div className="cocinaMeta">
+            <span>📱 <b>{contacto}</b></span>
+            {eta > 0 ? <span className="cocinaEta">⏱ {eta}m</span> : null}
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
-          <div
-            style={{
-              padding: "8px 12px",
-              borderRadius: 999,
-              background: "rgba(255,255,255,.06)",
-              border: "1px solid rgba(255,255,255,.10)",
-              fontWeight: 950,
-              fontSize: 13,
-              whiteSpace: "nowrap",
-            }}
-          >
+        <div className="cocinaRight">
+          <div className="cocinaEstado">
             {est.icon} {est.label}
           </div>
 
@@ -135,6 +182,7 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
                 pagoInfo,
               })
             }
+            title="Abrir WhatsApp"
           >
             💬 WA
           </button>
@@ -142,88 +190,48 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
       </div>
 
       {/* ITEMS */}
-      <div style={{ marginTop: 12 }}>
-        <div style={{ opacity: 0.75, fontSize: 12, marginBottom: 8, fontWeight: 900 }}>PEDIDO</div>
+      <div className="cocinaBlockTitle">PEDIDO</div>
+      <div className="cocinaItems">
+        {(pedido?.items || []).map((it, idx) => {
+          const qty = Number(it?.cantidad || 1);
+          const name = String(it?.nombreSnapshot || "Item");
+          const varTxt = it?.varianteTituloSnapshot ? ` · ${it.varianteTituloSnapshot}` : "";
+          const sub = Number(it?.precioUnitSnapshot || 0) * qty;
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {(pedido?.items || []).map((it, idx) => {
-            const qty = Number(it?.cantidad || 1);
-            const name = String(it?.nombreSnapshot || "Item");
-            const varTxt = it?.varianteTituloSnapshot ? ` · ${it.varianteTituloSnapshot}` : "";
-
-            return (
-              <div
-                key={`${it?.productoId || "x"}-${idx}`}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  gap: 12,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  background: "rgba(255,255,255,.04)",
-                  border: "1px solid rgba(255,255,255,.08)",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 950, fontSize: 15, wordBreak: "break-word" }}>
-                    <span style={{ fontSize: 18, marginRight: 8 }}>x{qty}</span>
-                    {name}
-                  </div>
-                  {varTxt ? (
-                    <div style={{ marginTop: 4, opacity: 0.85, fontSize: 13, fontWeight: 800 }}>
-                      {varTxt}
-                    </div>
-                  ) : null}
+          return (
+            <div className="cocinaItem" key={`${it?.productoId || "x"}-${idx}`}>
+              <div className="cocinaItemLeft">
+                <div className="cocinaItemName">
+                  <span className="cocinaQty">x{qty}</span>
+                  <span>{name}</span>
                 </div>
-
-                <div style={{ opacity: 0.7, fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" }}>
-                  $ {money(Number(it?.precioUnitSnapshot || 0) * qty)}
-                </div>
+                {varTxt ? <div className="cocinaVar">{varTxt}</div> : null}
               </div>
-            );
-          })}
-        </div>
+              <div className="cocinaItemPrice">$ {money(sub)}</div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* NOTA */}
-      {pedido?.mensaje ? (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 14,
-            background: "rgba(255,122,0,.10)",
-            border: "1px solid rgba(255,122,0,.28)",
-          }}
-        >
-          <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.9, marginBottom: 6 }}>📝 NOTA</div>
-          <div style={{ fontSize: 14, fontWeight: 900, lineHeight: 1.3, wordBreak: "break-word" }}>
-            {pedido.mensaje}
-          </div>
+      {/* NOTA (muy visible) */}
+      {nota ? (
+        <div className="cocinaNota" title="Nota del cliente">
+          <div className="cocinaNotaTitle">📝 NOTA</div>
+          <div className="cocinaNotaText">{nota}</div>
         </div>
       ) : null}
 
       {/* PAGO + TOTAL */}
-      <div
-        style={{
-          marginTop: 14,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 10,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ opacity: 0.9, fontSize: 13 }}>
+      <div className="cocinaFooter">
+        <div className="cocinaPago">
           <b>{pago.badge}</b> · {pago.line1}
+          {pago?.line2 && pago.line2 !== "—" ? <span className="cocinaPago2"> · {pago.line2}</span> : null}
         </div>
-
-        <div style={{ fontWeight: 950, fontSize: 16 }}>$ {money(total)}</div>
+        <div className="cocinaTotal">$ {money(total)}</div>
       </div>
 
       {/* ACCIONES */}
-      <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <div className="cocinaActions">
         {pedido?.estado === "pendiente" ? (
           <>
             <button className="btnPrimary" type="button" onClick={() => onAction("aceptar", pedido)}>
@@ -262,41 +270,100 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
   );
 }
 
+/* ===========================
+   PAGE
+   =========================== */
 export default function OwnerPanel() {
   const db = getFirestore(app);
   const nav = useNavigate();
-
   const { loading, userDoc, tiendaId } = useAdminSession();
 
   const [pendientes, setPendientes] = useState([]);
   const [encurso, setEncurso] = useState([]);
   const [pasados, setPasados] = useState([]);
 
+  // Para detectar “nuevos pedidos” y no spamear en el primer render
+  const seenIdsRef = useRef(new Set());
+  const hydratedRef = useRef(false);
+
+  // Pedimos permiso de notificaciones una vez (si está disponible)
+  useEffect(() => {
+    try {
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch {console.log('first')}
+  }, []);
+
+  function handleIncomingPendientes(arr) {
+    // En el primer snapshot, solo “hidrata” el set
+    if (!hydratedRef.current) {
+      hydratedRef.current = true;
+      seenIdsRef.current = new Set(arr.map((x) => x.id));
+      return;
+    }
+
+    // Detectar IDs nuevos
+    const prev = seenIdsRef.current;
+    const nuevos = arr.filter((x) => x?.id && !prev.has(x.id));
+
+    if (nuevos.length) {
+      // Actualizar set
+      nuevos.forEach((x) => prev.add(x.id));
+
+      // Noti + beep (uno por tanda)
+      const first = nuevos[0];
+      const nombre =
+        `${first?.cliente?.nombre || ""} ${first?.cliente?.apellido || ""}`.trim() || "Nuevo pedido";
+      const total = calcTotalPedido(first);
+
+      notifyNewOrder({
+        title: "🟠 Nuevo pedido",
+        body: `${nombre} · $ ${money(total)}`,
+      });
+
+      playBeep();
+    }
+  }
+
   useEffect(() => {
     if (!tiendaId) return;
 
     const base = collection(db, "tiendas", String(tiendaId), "pedidos");
 
-    const qPend = query(base, where("estado", "==", "pendiente"), orderBy("createdAt", "desc"), limit(80));
+    // ✅ (1) FIFO REAL:
+    // pendientes: orderBy ASC (más viejos arriba)
+    const qPend = query(
+      base,
+      where("estado", "==", "pendiente"),
+      orderBy("createdAt", "asc"),
+      limit(120)
+    );
 
+    // encurso: más nuevos arriba (para ver lo último que tocaste)
     const qEnCurso = query(
       base,
       where("estado", "in", ["aceptado", "en_preparacion", "listo"]),
       orderBy("createdAt", "desc"),
-      limit(80)
+      limit(120)
     );
 
     const qPas = query(
       base,
       where("estado", "in", ["rechazado", "entregado"]),
       orderBy("createdAt", "desc"),
-      limit(80)
+      limit(120)
     );
 
     const unsub1 = onSnapshot(qPend, (snap) => {
       const arr = [];
       snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
+
+      // defensivo por si algún doc viene sin createdAt
+      arr.sort((a, b) => tsToMs(a?.createdAt) - tsToMs(b?.createdAt));
+
       setPendientes(arr);
+      handleIncomingPendientes(arr);
     });
 
     const unsub2 = onSnapshot(qEnCurso, (snap) => {
@@ -440,7 +507,172 @@ export default function OwnerPanel() {
   if (!userDoc || !tiendaId) return <div className="loading">No autorizado.</div>;
 
   return (
-    <div style={{ padding: 14, maxWidth: 920, margin: "0 auto" }}>
+    <div style={{ padding: 14, maxWidth: 1100, margin: "0 auto" }}>
+      {/* styles locales (grilla + nota) */}
+      <style>{`
+        .cocinaGrid{
+          display:grid;
+          grid-template-columns: 1fr 1fr; /* (4) 2 columnas */
+          gap: 3.5rem;
+        }
+        @media (max-width: 860px){
+          .cocinaGrid{ grid-template-columns: 1fr; }
+        }
+
+        .cocinaCard{
+          padding: 14px;
+          margin-bottom: 0 !important; /* la grilla maneja el gap */
+        }
+
+        .cocinaHeader{
+          display:flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: center;
+          margin-bottom: 12px;
+        }
+        .cocinaWho{ min-width: 0; }
+        .cocinaName{
+          font-weight: 950;
+          font-size: 18px;
+          line-height: 1.1;
+          word-break: break-word;
+        }
+        .cocinaMeta{
+          margin-top: 6px;
+          opacity: .9;
+          font-size: 13px;
+          display:flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items:center;
+        }
+        .cocinaEta{
+          padding: 4px 8px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,.10);
+          background: rgba(255,255,255,.06);
+          font-weight: 900;
+        }
+
+        .cocinaRight{
+          display:flex;
+          gap: 10px;
+          align-items:center;
+          flex-shrink: 0;
+        }
+        .cocinaEstado{
+          padding: 8px 12px;
+          border-radius: 999px;
+          background: rgba(255,255,255,.06);
+          border: 1px solid rgba(255,255,255,.10);
+          font-weight: 950;
+          font-size: 13px;
+          white-space: nowrap;
+        }
+
+        .cocinaBlockTitle{
+          opacity: .75;
+          font-size: 12px;
+          margin-bottom: 8px;
+          font-weight: 900;
+          letter-spacing: .03em;
+        }
+
+        .cocinaItems{
+          display:flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .cocinaItem{
+          display:flex;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 10px 12px;
+          border-radius: 14px;
+          background: rgba(255,255,255,.04);
+          border: 1px solid rgba(255,255,255,.08);
+          align-items: center;
+        }
+        .cocinaItemLeft{ min-width: 0; }
+        .cocinaQty{
+          display:inline-block;
+          min-width: 44px;
+          font-size: 18px;
+          font-weight: 950;
+        }
+        .cocinaItemName{
+          font-weight: 950;
+          font-size: 2rem;
+          word-break: break-word;
+        }
+        .cocinaVar{
+          margin-top: 4px;
+          opacity: .85;
+          font-size: 1.5rem;
+          font-weight: 800;
+          word-break: break-word;
+        }
+        .cocinaItemPrice{
+          opacity: .75;
+          font-size: 2rem;
+          font-weight: 950;
+          white-space: nowrap;
+        }
+
+        /* (5) NOTA ultra visible + pulse */
+        .cocinaNota{
+          margin-top: 12px;
+          padding: 12px;
+          border-radius: 14px;
+          background: rgba(255,122,0,.14);
+          border: 1px solid rgba(255,122,0,.35);
+          animation: notaPulse 1.6s ease-in-out infinite;
+        }
+        .cocinaNotaTitle{
+          font-size: 12px;
+          font-weight: 950;
+          opacity: .95;
+          margin-bottom: 6px;
+          letter-spacing: .03em;
+        }
+        .cocinaNotaText{
+          font-size: 14px;
+          font-weight: 950;
+          line-height: 1.3;
+          word-break: break-word;
+        }
+        @keyframes notaPulse{
+          0%,100%{ transform: scale(1); box-shadow: 0 0 0 rgba(255,122,0,0); }
+          50%{ transform: scale(1.01); box-shadow: 0 0 0 6px rgba(255,122,0,.06); }
+        }
+
+        .cocinaFooter{
+          margin-top: 14px;
+          display:flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .cocinaPago{
+          opacity: .9;
+          font-size: 1rem;
+        }
+        .cocinaPago2{ opacity: .9; }
+        .cocinaTotal{
+          font-weight: 950;
+          font-size: 16px;
+        }
+        .cocinaActions{
+          margin-top: 12px;
+          display:flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+      `}</style>
+
+      {/* top */}
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
         <div>
           <div style={{ fontWeight: 900, fontSize: 18 }}>Panel del local</div>
@@ -459,6 +691,7 @@ export default function OwnerPanel() {
         </div>
       </div>
 
+      {/* resumen */}
       <div className="miniCard" style={{ marginTop: 14, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
@@ -497,34 +730,46 @@ export default function OwnerPanel() {
         </div>
       </div>
 
+      {/* pendientes */}
       <div style={{ marginTop: 16 }}>
-        <h3 style={{ margin: "14px 0 10px" }}>🟠 Pedidos pendientes ({pendientes.length})</h3>
+        <h3 style={{ margin: "1rem 0 10px" }}>🟠 Pedidos pendientes ({pendientes.length})</h3>
+
         {pendientes.length ? (
-          pendientes.map((p) => (
-            <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
-          ))
+          <div className="cocinaGrid">
+            {pendientes.map((p) => (
+              <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
+            ))}
+          </div>
         ) : (
           <div style={{ opacity: 0.7 }}>No hay pendientes.</div>
         )}
       </div>
 
+      {/* en curso */}
       <div style={{ marginTop: 18 }}>
-        <h3 style={{ margin: "14px 0 10px" }}>🟢 En preparación / Listos ({encurso.length})</h3>
+        <h3 style={{ margin: "5rem 0 10px" }}>🟢 En preparación / Listos ({encurso.length})</h3>
+
         {encurso.length ? (
-          encurso.map((p) => (
-            <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
-          ))
+          <div className="cocinaGrid">
+            {encurso.map((p) => (
+              <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
+            ))}
+          </div>
         ) : (
           <div style={{ opacity: 0.7 }}>No hay pedidos activos.</div>
         )}
       </div>
 
+      {/* pasados */}
       <div style={{ marginTop: 18 }}>
-        <h3 style={{ margin: "14px 0 10px" }}>⚫ Pedidos pasados ({pasadosHoy.length})</h3>
+        <h3 style={{ margin: "5rem 0 10px" }}>⚫ Pedidos pasados ({pasadosHoy.length})</h3>
+
         {pasadosHoy.length ? (
-          pasadosHoy.map((p) => (
-            <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
-          ))
+          <div className="cocinaGrid">
+            {pasadosHoy.map((p) => (
+              <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
+            ))}
+          </div>
         ) : (
           <div style={{ opacity: 0.7 }}>No hay pasados (hoy).</div>
         )}
