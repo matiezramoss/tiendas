@@ -101,6 +101,23 @@ function tsToMs(ts) {
 }
 
 /* ===========================
+   ✅ NUEVO: EXTRAS/OPCIONES helpers
+   (solo para MOSTRAR, no toca totales ni nada)
+   =========================== */
+function getExtrasDeItem(it) {
+  // En tu carrito se guarda como `opcionesSnapshot: [...]`
+  const arr = Array.isArray(it?.opcionesSnapshot) ? it.opcionesSnapshot : [];
+  // Filtramos lo mínimo para evitar basura
+  return arr
+    .map((x) => ({
+      grupoTitulo: String(x?.grupoTitulo || "").trim(),
+      itemTitulo: String(x?.itemTitulo || "").trim(),
+      precioExtra: Number(x?.precioExtra || 0),
+    }))
+    .filter((x) => x.itemTitulo);
+}
+
+/* ===========================
    DELIVERY / RETIRO helpers
    =========================== */
 function entregaInfo(pedido) {
@@ -285,15 +302,43 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
           const varTxt = it?.varianteTituloSnapshot ? ` · ${it.varianteTituloSnapshot}` : "";
           const sub = Number(it?.precioUnitSnapshot || 0) * qty;
 
+          // ✅ NUEVO: extras elegidos por item
+          const extrasArr = getExtrasDeItem(it);
+
           return (
             <div className="cocinaItem" key={`${it?.productoId || "x"}-${idx}`}>
               <div className="cocinaItemLeft">
                 <div className="cocinaItemName">
-                  <span className="cocinaQty">x{qty}</span>
+                  <span className="cocinaQty">({qty})</span>
                   <span>{name}</span>
                 </div>
+
                 {varTxt ? <div className="cocinaVar">{varTxt}</div> : null}
+
+                {/* ✅ NUEVO: MOSTRAR EXTRAS/OPCIONES */}
+                {extrasArr.length ? (
+                  <div className="cocinaExtras">
+                    <div className="cocinaExtrasTitle">Extras / Opciones:</div>
+                    <div className="cocinaExtrasList">
+                      {extrasArr.map((x, i) => (
+                        <div className="cocinaExtraLine" key={`${idx}-ex-${i}`}>
+                          <span className="cocinaExtraDot">＋</span>
+                          <span className="cocinaExtraText">
+                            {x.itemTitulo}
+                            {x.grupoTitulo ? <span className="cocinaExtraGroup"> ({x.grupoTitulo})</span> : null}
+                          </span>
+                          {Number(x.precioExtra || 0) ? (
+                            <span className="cocinaExtraPrice">+$ {money(x.precioExtra)}</span>
+                          ) : (
+                            <span className="cocinaExtraPrice"> </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
+
               <div className="cocinaItemPrice">$ {money(sub)}</div>
             </div>
           );
@@ -560,6 +605,7 @@ export default function OwnerPanel() {
 
   return (
     <div style={{ padding: 14, maxWidth: 1100, margin: "0 auto" }}>
+      {/* styles locales (grilla + nota + entrega + extras) */}
       <style>{`
         .cocinaGrid{
           display:grid;
@@ -698,14 +744,13 @@ export default function OwnerPanel() {
           border-radius: 14px;
           background: rgba(255,255,255,.04);
           border: 1px solid rgba(255,255,255,.08);
-          align-items: center;
+          align-items: flex-start;
         }
-        .cocinaItemLeft{ min-width: 0; }
+        .cocinaItemLeft{ min-width: 0; flex: 1; }
         .cocinaQty{
           display:inline-block;
-          min-width: 44px;
-          font-size: 18px;
-          font-weight: 950;
+          min-width: 2.3rem;
+          font-weight: 700;
         }
         .cocinaItemName{
           font-weight: 950;
@@ -724,6 +769,57 @@ export default function OwnerPanel() {
           font-size: 2rem;
           font-weight: 950;
           white-space: nowrap;
+          padding-top: 4px;
+        }
+
+        /* ✅ NUEVO: Extras visibles (clave) */
+        .cocinaExtras{
+          margin-top: 10px;
+          padding: 10px 10px;
+          border-radius: 12px;
+          background: rgba(255,255,255,.03);
+          border: 1px dashed rgba(255,255,255,.14);
+        }
+        .cocinaExtrasTitle{
+          font-size: 12px;
+          font-weight: 950;
+          opacity: .85;
+          margin-bottom: 6px;
+          letter-spacing: .02em;
+        }
+        .cocinaExtrasList{
+          display:flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .cocinaExtraLine{
+          display:flex;
+          gap: 8px;
+          align-items: baseline;
+          justify-content: space-between;
+        }
+        .cocinaExtraDot{
+          font-weight: 1000;
+          opacity: .85;
+        }
+        .cocinaExtraText{
+          flex: 1;
+          min-width: 0;
+          font-size: 13px;
+          font-weight: 900;
+          opacity: .95;
+          word-break: break-word;
+        }
+        .cocinaExtraGroup{
+          opacity: .7;
+          font-weight: 800;
+        }
+        .cocinaExtraPrice{
+          font-size: 13px;
+          font-weight: 1000;
+          opacity: .9;
+          white-space: nowrap;
+          margin-left: 10px;
         }
 
         .cocinaNota{

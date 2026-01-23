@@ -259,7 +259,7 @@
     padding: 22px 14px 40px;
         backdrop-filter: blur(3px);
         -webkit-backdrop-filter: blur(12px);
-        background: rgb(0 0 0 / 63%);
+        /* background: rgb(0 0 0 / 63%); */
         height: 100vh;
   }
 
