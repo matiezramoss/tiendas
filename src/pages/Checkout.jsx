@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { app } from "../lib/firebase.js";
 import { money } from "../lib/money.js";
+import { BARRIOS, getBarrioByKey, calcEnvioFromBarrioKey } from "../lib/delivery.js";
 
 /* ===========================
    Helpers horario
@@ -54,17 +55,21 @@ function calcTotal(carrito) {
   );
 }
 
-function calcSena(tienda, total) {
+function calcSena(tienda, totalFinal) {
   const p = tienda?.pago || {};
   const senaFija = Number(p?.senaFija || 0);
   const senaPorcentaje = Number(p?.senaPorcentaje || 0);
 
   let v = 0;
   if (senaFija > 0) v = senaFija;
-  else if (senaPorcentaje > 0) v = Math.round((total * senaPorcentaje) / 100);
+  else if (senaPorcentaje > 0) v = Math.round((totalFinal * senaPorcentaje) / 100);
   else v = 0;
 
-  return Math.min(total, Math.max(0, v));
+  return Math.min(totalFinal, Math.max(0, v));
+}
+
+function onlyDigitsPhone(s) {
+  return String(s || "").replace(/\D/g, "");
 }
 
 export default function Checkout() {
@@ -101,24 +106,44 @@ export default function Checkout() {
   const [carrito, setCarrito] = useState(() => carritoLS);
 
   const horario = useMemo(() => getHorarioActual(tienda), [tienda]);
-  const total = useMemo(() => calcTotal(carrito), [carrito]);
 
-  // ✅ seña real (si no hay config => 0)
-  const sena = useMemo(() => calcSena(tienda, total), [tienda, total]);
+  // ✅ subtotal (sin envío)
+  const subtotal = useMemo(() => calcTotal(carrito), [carrito]);
 
-  // ✅ mostrar “Seña” SOLO si hay seña configurada y es < total
+  /* ===========================
+     ✅ ENTREGA (retiro/delivery)
+     =========================== */
+  const [tipoEntrega, setTipoEntrega] = useState("retiro"); // "retiro" | "delivery"
+  const [direccion, setDireccion] = useState("");
+  const [barrioKey, setBarrioKey] = useState("");
+
+  const barrioSel = useMemo(() => getBarrioByKey(barrioKey), [barrioKey]);
+
+  const envio = useMemo(() => {
+    if (tipoEntrega !== "delivery") return 0;
+    return calcEnvioFromBarrioKey(barrioKey);
+  }, [tipoEntrega, barrioKey]);
+
+  // ✅ total final (con envío si corresponde)
+  const totalFinal = useMemo(() => subtotal + envio, [subtotal, envio]);
+
+  // ✅ seña se calcula sobre total FINAL
+  const sena = useMemo(() => calcSena(tienda, totalFinal), [tienda, totalFinal]);
+
+  // ✅ mostrar “Seña” SOLO si hay seña configurada y es < totalFinal
   const aceptaSenaFlag = !!tienda?.pago?.aceptaSena;
-  const puedeSena = aceptaSenaFlag && sena > 0 && sena < total;
+  const puedeSena = aceptaSenaFlag && sena > 0 && sena < totalFinal;
 
-  // ✅ pago elegido: por defecto total (si hay seña, podés dejarlo en seña si querés)
-  const [pagoElegido, setPagoElegido] = useState(puedeSena ? "sena" : "total");
+  // ✅ pago elegido
+  const [pagoElegido, setPagoElegido] = useState(puedeSena ? "sena" : "total"); // "sena" | "total" | "efectivo"
 
   const montoAPagar = useMemo(() => {
     if (!tienda) return 0;
+
+    if (pagoElegido === "efectivo") return 0; // paga al recibir / retirar
     if (pagoElegido === "sena") return sena;
-    // total (y en el futuro: efectivo)
-    return total;
-  }, [tienda, total, sena, pagoElegido]);
+    return totalFinal;
+  }, [tienda, totalFinal, sena, pagoElegido]);
 
   const [cliente, setCliente] = useState({ nombre: "", apellido: "", contacto: "" });
   const [mensaje, setMensaje] = useState("");
@@ -147,10 +172,9 @@ export default function Checkout() {
     if (!horario.ok) return carrito || [];
     const key = horario.key;
     if (key === "todo") return [];
-
     return (carrito || []).filter((it) => {
       const tags = Array.isArray(it?.tagsHorarioSnapshot) ? it.tagsHorarioSnapshot : null;
-      if (!tags) return false; // si no hay tags, lo dejamos pasar
+      if (!tags) return false;
       return !tags.includes(key);
     });
   }, [carrito, horario]);
@@ -177,6 +201,10 @@ export default function Checkout() {
     showToast("Listo ✅ saqué los fuera de horario");
   }
 
+  const requiereDeliveryOk =
+    tipoEntrega !== "delivery" ||
+    (String(direccion).trim().length >= 6 && !!barrioSel && envio > 0);
+
   const canConfirm =
     !!tienda &&
     Array.isArray(carrito) &&
@@ -186,9 +214,12 @@ export default function Checkout() {
     String(cliente.nombre).trim() &&
     String(cliente.apellido).trim() &&
     String(cliente.contacto).trim() &&
-    alias &&
-    cbu &&
-    (pagoElegido === "total" || (pagoElegido === "sena" && puedeSena));
+    requiereDeliveryOk &&
+    // Si es efectivo, no obligamos alias/cbu.
+    (pagoElegido === "efectivo" || (alias && cbu)) &&
+    (pagoElegido === "total" ||
+      pagoElegido === "efectivo" ||
+      (pagoElegido === "sena" && puedeSena));
 
   async function confirmar() {
     if (!canConfirm) return;
@@ -196,48 +227,89 @@ export default function Checkout() {
     const db = getFirestore(app);
     const tiendaId = tienda?.id || tienda?.slug || slug || "chaketortas";
 
-const payload = {
-  tiendaIdSnapshot: String(tiendaId), // ✅ NUEVO: guardo de qué tienda es este pedido
-  estado: "pendiente",
-  cliente: {
-    nombre: String(cliente.nombre).trim(),
-    apellido: String(cliente.apellido).trim(),
-    contacto: String(cliente.contacto).trim(),
-  },
-  mensaje: String(mensaje || "").trim(),
-  items: carrito.map((it) => ({
-    productoId: it.productoId || "",
-    nombreSnapshot: it.nombreSnapshot || "",
-    varianteKey: it.varianteKey || "",
-    varianteTituloSnapshot: it.varianteTituloSnapshot || "",
-    precioUnitSnapshot: Number(it.precioUnitSnapshot || 0),
-    cantidad: Number(it.cantidad || 1),
-    opcionesSnapshot: Array.isArray(it.opcionesSnapshot) ? it.opcionesSnapshot : [],
-    tagsHorarioSnapshot: Array.isArray(it.tagsHorarioSnapshot) ? it.tagsHorarioSnapshot : undefined,
-  })),
-  pagoElegido, // "sena" | "total" (más adelante "efectivo")
-  totalSnapshot: Number(total || 0),
-  montoAPagarSnapshot: Number(montoAPagar || 0),
-  senaSnapshot: Number(sena || 0),
-  createdAt: serverTimestamp(),
-  decisionAt: null,
-  stockProcesado: false,
-};
+    const entregaSnapshot =
+      tipoEntrega === "delivery"
+        ? {
+            tipo: "delivery",
+            direccion: String(direccion).trim(),
+            barrioKey: String(barrioSel?.key || ""),
+            barrioNombre: String(barrioSel?.nombre || ""),
+            envio: Number(envio || 0),
+          }
+        : {
+            tipo: "retiro",
+            direccion: "",
+            barrioKey: "",
+            barrioNombre: "",
+            envio: 0,
+          };
 
+    // ✅ IMPORTANTÍSIMO: campos “planos” (compatibles con OwnerPanel / filtros / WA)
+    const entregaTipo = entregaSnapshot.tipo; // "delivery" | "retiro"
 
+    const payload = {
+      tiendaIdSnapshot: String(tiendaId),
+      estado: "pendiente",
+      cliente: {
+        nombre: String(cliente.nombre).trim(),
+        apellido: String(cliente.apellido).trim(),
+        contacto: String(cliente.contacto).trim(),
+        contactoDigits: onlyDigitsPhone(cliente.contacto),
+      },
+      mensaje: String(mensaje || "").trim(),
+
+      // ✅ snapshot completo (por si querés usarlo en tracking / histórico)
+      entregaSnapshot,
+
+      // ✅ campos planos (esto arregla tu problema de “me aparece retiro”)
+      entregaTipo, // <-- EL DATO QUE TE FALTABA PARA QUE OWNERPANEL LO LEA
+      direccionSnapshot: entregaTipo === "delivery" ? String(direccion).trim() : "",
+      barrioKeySnapshot: entregaTipo === "delivery" ? String(barrioSel?.key || "") : "",
+      barrioNombreSnapshot: entregaTipo === "delivery" ? String(barrioSel?.nombre || "") : "",
+      envioPrecioSnapshot: entregaTipo === "delivery" ? Number(envio || 0) : 0,
+
+      // ✅ Totales
+      subtotalSnapshot: Number(subtotal || 0),
+      totalFinalSnapshot: Number(totalFinal || 0),
+
+      // compat (si antes “totalSnapshot” era el total sin envío)
+      totalSnapshot: Number(subtotal || 0),
+
+      // (si ya lo estabas usando en otros lados, lo dejamos)
+      envioSnapshot: Number(envio || 0),
+
+      items: carrito.map((it) => ({
+        productoId: it.productoId || "",
+        nombreSnapshot: it.nombreSnapshot || "",
+        varianteKey: it.varianteKey || "",
+        varianteTituloSnapshot: it.varianteTituloSnapshot || "",
+        precioUnitSnapshot: Number(it.precioUnitSnapshot || 0),
+        cantidad: Number(it.cantidad || 1),
+        opcionesSnapshot: Array.isArray(it.opcionesSnapshot) ? it.opcionesSnapshot : [],
+        tagsHorarioSnapshot: Array.isArray(it.tagsHorarioSnapshot) ? it.tagsHorarioSnapshot : undefined,
+      })),
+
+      pagoElegido, // "sena" | "total" | "efectivo"
+      montoAPagarSnapshot: Number(montoAPagar || 0),
+      senaSnapshot: Number(sena || 0),
+
+      createdAt: serverTimestamp(),
+      decisionAt: null,
+      stockProcesado: false,
+    };
 
     const ref = collection(db, "tiendas", String(tiendaId), "pedidos");
-    const doc = await addDoc(ref, payload);
+    const docRef = await addDoc(ref, payload);
 
     try {
-      localStorage.setItem("pedido_last_id", doc.id);
+      localStorage.setItem("pedido_last_id", docRef.id);
       localStorage.removeItem("carrito_checkout");
     } catch (e) {
       console.warn("No se pudo guardar en localStorage", e);
     }
 
     showToast("Pedido creado ✅");
-    nav(`/t/${tiendaId}/pedido/${doc.id}`, { state: { tiendaId } });
+    nav(`/t/${tiendaId}/pedido/${docRef.id}`, { state: { tiendaId } });
   }
 
   if (!tienda) {
@@ -331,8 +403,20 @@ const payload = {
             })}
 
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+              <b>Subtotal</b>
+              <b>$ {money(subtotal)}</b>
+            </div>
+
+            {tipoEntrega === "delivery" ? (
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, opacity: 0.95 }}>
+                <b>Envío</b>
+                <b>$ {money(envio)}</b>
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
               <b>Total</b>
-              <b>$ {money(total)}</b>
+              <b>$ {money(totalFinal)}</b>
             </div>
           </div>
         ) : (
@@ -340,11 +424,79 @@ const payload = {
         )}
       </div>
 
-      {/* Datos cliente ✅ (CAMBIADO SOLO ESTE BLOQUE) */}
+      {/* Entrega */}
+      <div className="miniCard" style={{ marginBottom: 12 }}>
+        <h4>Entrega</h4>
+
+        <div className="chipRow" style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className={`chip ${tipoEntrega === "retiro" ? "on" : ""}`}
+            onClick={() => setTipoEntrega("retiro")}
+          >
+            Retiro
+          </button>
+
+          <button
+            type="button"
+            className={`chip ${tipoEntrega === "delivery" ? "on" : ""}`}
+            onClick={() => setTipoEntrega("delivery")}
+          >
+            Delivery
+          </button>
+        </div>
+
+        {tipoEntrega === "delivery" ? (
+          <div style={{ marginTop: 12 }}>
+            <input
+              className="input"
+              style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
+              placeholder="Dirección (calle y altura) *"
+              value={direccion}
+              onChange={(e) => setDireccion(e.target.value)}
+            />
+
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
+                Barrio *
+              </div>
+
+              <select
+                className="input"
+                value={barrioKey}
+                onChange={(e) => setBarrioKey(e.target.value)}
+                style={{ width: "100%", margin: 0 }}
+              >
+                <option value="">Elegí un barrio…</option>
+                {BARRIOS.map((b) => (
+                  <option key={b.key} value={b.key}>
+                    {b.nombre} · $ {money(b.precio)}
+                  </option>
+                ))}
+              </select>
+
+              {barrioSel ? (
+                <div style={{ marginTop: 10, opacity: 0.9, fontWeight: 900 }}>
+                  Envío: $ {money(envio)} · Total: $ {money(totalFinal)}
+                </div>
+              ) : (
+                <div style={{ marginTop: 10, opacity: 0.7, fontSize: 12 }}>
+                  * Elegí el barrio para calcular el envío.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 10, opacity: 0.75, fontSize: 12 }}>
+            Retirás en el local. No se suma envío.
+          </div>
+        )}
+      </div>
+
+      {/* Datos cliente */}
       <div className="miniCard" style={{ marginBottom: 12 }}>
         <h4>Datos</h4>
 
-        {/* ✅ FIX: le damos la clase que tu @media estaba esperando */}
         <div
           className="__datosGridFix"
           style={{
@@ -396,7 +548,6 @@ const payload = {
           onChange={(e) => setMensaje(e.target.value)}
         />
 
-        {/* ✅ FIX: ahora sí afecta porque la clase existe */}
         <style>{`
           @media (max-width: 520px){
             .miniCard .__datosGridFix { grid-template-columns: 1fr !important; }
@@ -424,7 +575,15 @@ const payload = {
             className={`chip ${pagoElegido === "total" ? "on" : ""}`}
             onClick={() => setPagoElegido("total")}
           >
-            Total · $ {money(total)}
+            Total · $ {money(totalFinal)}
+          </button>
+
+          <button
+            type="button"
+            className={`chip ${pagoElegido === "efectivo" ? "on" : ""}`}
+            onClick={() => setPagoElegido("efectivo")}
+          >
+            Efectivo
           </button>
         </div>
 
@@ -434,31 +593,38 @@ const payload = {
           </div>
         ) : null}
 
-        <div style={{ marginTop: 12, opacity: 0.9 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <div>
-              <div style={{ fontWeight: 900 }}>Alias</div>
-              <div style={{ opacity: 0.85 }}>{alias || "—"}</div>
+        {pagoElegido === "efectivo" ? (
+          <div style={{ marginTop: 12, opacity: 0.9, fontSize: 13 }}>
+            Pagás en efectivo al {tipoEntrega === "delivery" ? "recibir" : "retirar"}.
+            <div style={{ marginTop: 8, fontWeight: 900 }}>Total: $ {money(totalFinal)}</div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 12, opacity: 0.9 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ fontWeight: 900 }}>Alias</div>
+                <div style={{ opacity: 0.85 }}>{alias || "—"}</div>
+              </div>
+              <button className="btnGhost" type="button" onClick={() => copy(alias, "Alias")} disabled={!alias}>
+                Copiar
+              </button>
             </div>
-            <button className="btnGhost" type="button" onClick={() => copy(alias, "Alias")} disabled={!alias}>
-              Copiar
-            </button>
-          </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 10 }}>
-            <div>
-              <div style={{ fontWeight: 900 }}>CBU</div>
-              <div style={{ opacity: 0.85 }}>{cbu || "—"}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 10 }}>
+              <div>
+                <div style={{ fontWeight: 900 }}>CBU</div>
+                <div style={{ opacity: 0.85 }}>{cbu || "—"}</div>
+              </div>
+              <button className="btnGhost" type="button" onClick={() => copy(cbu, "CBU")} disabled={!cbu}>
+                Copiar
+              </button>
             </div>
-            <button className="btnGhost" type="button" onClick={() => copy(cbu, "CBU")} disabled={!cbu}>
-              Copiar
-            </button>
-          </div>
 
-          <div style={{ marginTop: 12, fontWeight: 900 }}>
-            A pagar ahora: $ {money(montoAPagar)}
+            <div style={{ marginTop: 12, fontWeight: 900 }}>
+              A pagar ahora: $ {money(montoAPagar)}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 10 }}>
@@ -469,6 +635,12 @@ const payload = {
           Confirmar compra
         </button>
       </div>
+
+      {tipoEntrega === "delivery" && !requiereDeliveryOk ? (
+        <div style={{ marginTop: 12, opacity: 0.75, fontSize: 12 }}>
+          * Para delivery necesitás <b>dirección</b> y <b>barrio</b>.
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -16,16 +16,72 @@ function calcTotalPedido(p) {
   return items.reduce((acc, it) => acc + Number(it?.precioUnitSnapshot || 0) * Number(it?.cantidad || 1), 0);
 }
 
-function labelEstado(estado) {
+/** ✅ Estados con color + etiqueta corta (para “boleta”) */
+function estadoBadge(estado) {
   const e = String(estado || "").toLowerCase();
-  if (e === "pendiente") return "🟠 Pendiente (esperando confirmación del local)";
-  if (e === "aceptado") return "🟢 Aceptado (en preparación)";
-  if (e === "en_preparacion") return "🟡 En preparación";
-  if (e === "listo") return "✅ Listo para retirar";
-  if (e === "rechazado") return "🔴 Rechazado";
-  if (e === "entregado") return "⚫ Entregado / Cerrado";
-  return `Estado: ${estado || "—"}`;
+  if (e === "pendiente") return { icon: "🟠", title: "PENDIENTE", desc: "Esperando confirmación del local" };
+  if (e === "aceptado") return { icon: "🟢", title: "ACEPTADO", desc: "En preparación" };
+  if (e === "en_preparacion") return { icon: "🟡", title: "EN PREPARACIÓN", desc: "Tu pedido está en cocina" };
+  if (e === "listo") return { icon: "✅", title: "LISTO", desc: "Listo para retirar / entregar" };
+  if (e === "rechazado") return { icon: "🔴", title: "RECHAZADO", desc: "El local no pudo tomar el pedido" };
+  if (e === "entregado") return { icon: "⚫", title: "ENTREGADO", desc: "Pedido cerrado" };
+  return { icon: "•", title: String(estado || "—").toUpperCase(), desc: "" };
 }
+
+function entregaInfo(pedido) {
+  // ✅ soporta ambos: entregaSnapshot y campos planos que agregaste
+  const tipo =
+    String(pedido?.entregaSnapshot?.tipo || pedido?.entregaTipo || "retiro").toLowerCase() === "delivery"
+      ? "delivery"
+      : "retiro";
+
+  const direccion =
+    String(pedido?.entregaSnapshot?.direccion || pedido?.direccionSnapshot || "").trim();
+
+  const barrioNombre =
+    String(pedido?.entregaSnapshot?.barrioNombre || pedido?.barrioNombreSnapshot || "").trim();
+
+  const envio =
+    Number(
+      pedido?.entregaSnapshot?.envio ??
+        pedido?.envioPrecioSnapshot ??
+        pedido?.envioSnapshot ??
+        0
+    ) || 0;
+
+  return { tipo, direccion, barrioNombre, envio };
+}
+
+
+
+function pagoInfo(pedido, totalFinal) {
+  const pago = String(pedido?.pagoElegido || "").toLowerCase();
+  const montoAhora = Number(pedido?.montoAPagarSnapshot || 0);
+
+  if (pago === "efectivo") {
+    return {
+      badge: "EFECTIVO",
+      line1: "Pagás al recibir / retirar",
+      line2: `Total $ ${money(totalFinal)}`,
+    };
+  }
+
+  if (pago === "sena") {
+    const falta = Math.max(0, totalFinal - montoAhora);
+    return {
+      badge: "SEÑA",
+      line1: `Pagaste $ ${money(montoAhora)} (seña)`,
+      line2: `Falta $ ${money(falta)}`,
+    };
+  }
+
+  return {
+    badge: "TOTAL",
+    line1: `Pagás ahora $ ${money(montoAhora || totalFinal)}`,
+    line2: "Transferencia",
+  };
+}
+
 
 export default function TrackingPedido() {
   const db = getFirestore(app);
@@ -59,11 +115,30 @@ export default function TrackingPedido() {
     return () => unsub();
   }, [db, tiendaId, pedidoId]);
 
-  const total = useMemo(() => calcTotalPedido(pedido), [pedido]);
+  const totalItems = useMemo(() => calcTotalPedido(pedido), [pedido]);
 
-  const pago = String(pedido?.pagoElegido || "—");
-  const montoAhora = Number(pedido?.montoAPagarSnapshot || 0);
+  // ✅ total final (con envío) si existe, si no cae al total de items
+  const totalFinal = useMemo(() => {
+    const v =
+      Number(pedido?.totalFinalSnapshot ?? pedido?.totalFinal ?? 0) ||
+      Number(pedido?.totalSnapshot ?? 0) ||
+      0;
+    return v > 0 ? v : totalItems;
+  }, [pedido, totalItems]);
+
+  const subtotal = useMemo(() => {
+    const v = Number(pedido?.subtotalSnapshot ?? 0);
+    return v > 0 ? v : totalItems;
+  }, [pedido, totalItems]);
+
+  const { tipo: entregaTipo, direccion, barrioNombre, envio } = useMemo(
+    () => entregaInfo(pedido),
+    [pedido]
+  );
+
   const etaMin = Number(pedido?.etaMin || 0);
+  const est = estadoBadge(pedido?.estado);
+  const pago = pagoInfo(pedido, totalFinal);
 
   if (!tiendaId || !pedidoId) {
     return <div className="loading">Falta tienda o id de pedido.</div>;
@@ -86,97 +161,387 @@ export default function TrackingPedido() {
             <button className="btnPrimary" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
               Volver a la tienda
             </button>
-            <button className="btnGhost" type="button" onClick={() => nav("/owner")}>
-              Ir al panel del local
-            </button>
           </div>
         </div>
       </div>
     );
   }
 
+  const clienteNombre =
+    `${pedido?.cliente?.nombre || ""} ${pedido?.cliente?.apellido || ""}`.trim() || "—";
+  const clienteContacto = String(pedido?.cliente?.contacto || "—");
+
   return (
-    <div style={{ padding: 14, maxWidth: 920, margin: "0 auto" }}>
+    <div style={{ padding: 14, maxWidth: 760, margin: "0 auto" }}>
+      {/* ✅ estilos “boleta” + status */}
+      <style>{`
+        .boletaWrap{
+          border-radius: 18px;
+          overflow: hidden;
+          border: 1px solid rgba(255,255,255,.10);
+          background: rgba(255,255,255,.03);
+          box-shadow: 0 18px 60px rgba(0,0,0,.35);
+        }
+
+        .boletaTop{
+          padding: 14px 14px 12px;
+          display:flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+          border-bottom: 1px dashed rgba(255,255,255,.16);
+        }
+
+        .boletaBrand{
+          display:flex;
+          flex-direction: column;
+          gap: 4px;
+          min-width: 0;
+        }
+        .boletaTitle{
+          font-weight: 950;
+          font-size: 16px;
+          line-height: 1.1;
+          letter-spacing: .02em;
+        }
+        .boletaMeta{
+          opacity: .8;
+          font-size: 12px;
+          display:flex;
+          flex-wrap: wrap;
+          gap: 8px 10px;
+        }
+        .boletaMeta b{ opacity: .95; }
+
+        .estadoChip{
+          flex-shrink: 0;
+          display:flex;
+          align-items:center;
+          gap: 8px;
+          padding: 10px 12px;
+          border-radius: 999px;
+          font-weight: 950;
+          font-size: 12px;
+          letter-spacing: .03em;
+          border: 1px solid rgba(255,255,255,.14);
+          background: rgba(0,0,0,.18);
+        }
+        .estadoChip .sub{
+          opacity: .85;
+          font-weight: 900;
+          letter-spacing: 0;
+          text-transform: none;
+          font-size: 11px;
+          margin-top: 2px;
+        }
+        .estadoChipCol{
+          display:flex;
+          flex-direction: column;
+          align-items:flex-start;
+          line-height: 1.1;
+        }
+
+        /* color por estado (muy sutil, no rompe tema) */
+        .st-pendiente{ border-color: rgba(255,165,0,.35); background: rgba(255,165,0,.10); }
+        .st-aceptado{ border-color: rgba(0,200,120,.35); background: rgba(0,200,120,.10); }
+        .st-en_preparacion{ border-color: rgba(255,210,0,.35); background: rgba(255,210,0,.10); }
+        .st-listo{ border-color: rgba(160,255,160,.35); background: rgba(160,255,160,.10); }
+        .st-rechazado{ border-color: rgba(255,90,90,.35); background: rgba(255,90,90,.10); }
+        .st-entregado{ border-color: rgba(255,255,255,.18); background: rgba(255,255,255,.06); }
+
+        .boletaBody{
+          padding: 14px;
+        }
+
+        .boletaSection{
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 1px dashed rgba(255,255,255,.14);
+        }
+        .boletaH{
+          font-size: 12px;
+          letter-spacing: .08em;
+          font-weight: 950;
+          opacity: .75;
+        }
+
+        .infoGrid{
+          margin-top: 10px;
+          display:grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        @media (max-width: 560px){
+          .infoGrid{ grid-template-columns: 1fr; }
+        }
+        .infoBox{
+          padding: 12px;
+          border-radius: 14px;
+          background: rgba(255,255,255,.04);
+          border: 1px solid rgba(255,255,255,.08);
+        }
+        .infoLabel{
+          font-size: 11px;
+          opacity: .7;
+          font-weight: 900;
+        }
+        .infoValue{
+          margin-top: 6px;
+          font-weight: 950;
+          font-size: 13px;
+          word-break: break-word;
+        }
+        .infoSmall{
+          margin-top: 6px;
+          opacity: .8;
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .items{
+          margin-top: 10px;
+          display:flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .itRow{
+          display:flex;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 14px;
+          background: rgba(255,255,255,.04);
+          border: 1px solid rgba(255,255,255,.08);
+          align-items: flex-start;
+        }
+        .itLeft{ min-width: 0; }
+        .itName{
+          font-weight: 950;
+          font-size: 13px;
+          line-height: 1.2;
+          word-break: break-word;
+        }
+        .itMeta{
+          margin-top: 6px;
+          opacity: .75;
+          font-size: 12px;
+          font-weight: 800;
+        }
+        .itPrice{
+          font-weight: 950;
+          white-space: nowrap;
+          font-size: 13px;
+          opacity: .95;
+        }
+
+        .totals{
+          margin-top: 10px;
+          display:flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .totLine{
+          display:flex;
+          justify-content: space-between;
+          gap: 10px;
+          font-weight: 900;
+        }
+        .totLine .muted{ opacity: .8; font-weight: 900; }
+        .totBig{
+          margin-top: 6px;
+          padding-top: 10px;
+          border-top: 1px solid rgba(255,255,255,.10);
+          display:flex;
+          justify-content: space-between;
+          font-weight: 950;
+          font-size: 16px;
+        }
+
+        .notaBox{
+          margin-top: 10px;
+          padding: 12px;
+          border-radius: 14px;
+          background: rgba(255,122,0,.12);
+          border: 1px solid rgba(255,122,0,.28);
+        }
+        .notaTitle{
+          font-size: 11px;
+          font-weight: 950;
+          letter-spacing: .06em;
+          opacity: .9;
+        }
+        .notaText{
+          margin-top: 6px;
+          font-weight: 900;
+          font-size: 13px;
+          word-break: break-word;
+          opacity: .95;
+        }
+
+        .boletaActions{
+          padding: 12px 14px;
+          border-top: 1px dashed rgba(255,255,255,.16);
+          display:flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          background: rgba(0,0,0,.10);
+        }
+      `}</style>
+
+      {/* top actions (fuera de boleta) */}
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-        <div>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>Tracking pedido</div>
-          <div style={{ opacity: 0.75, fontSize: 13 }}>
-            Tienda: <b>{tiendaId}</b> · Pedido: <b>{pedidoId}</b>
+        <button className="btnGhost" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
+          ⬅️  VOLVER AL LOCAL
+        </button>
+      </div>
+
+      {/* ✅ BOLETA */}
+      <div className="boletaWrap" style={{ marginTop: 12 }}>
+        {/* Header */}
+        <div className="boletaTop">
+          <div className="boletaBrand">
+            <div className="boletaMeta">
+              <span>
+                Tienda: <b>{tiendaId}</b>
+              </span>
+              <span>
+                Pedido: <b>#{pedidoId}</b>
+              </span>
+              <span>
+                Creado: <b>{fmtWhen(pedido?.createdAt) || "—"}</b>
+              </span>
+              {pedido?.decisionAt ? (
+                <span>
+                  Decisión: <b>{fmtWhen(pedido?.decisionAt)}</b>
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div
+            className={`estadoChip st-${String(pedido?.estado || "").toLowerCase()}`}
+            title={est.desc || ""}
+          >
+            <span style={{ fontSize: 16 }}>{est.icon}</span>
+            <div className="estadoChipCol">
+              <div>{est.title}</div>
+              {est.desc ? <div className="sub">{est.desc}</div> : null}
+            </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <button className="btnGhost" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
-            Ver tienda
-          </button>
-        </div>
-      </div>
-
-      <div className="miniCard" style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 900, fontSize: 14 }}>{labelEstado(pedido?.estado)}</div>
-
-        <div style={{ marginTop: 8, opacity: 0.85, fontSize: 13 }}>
-          Creado: <b>{fmtWhen(pedido?.createdAt) || "—"}</b>
-          {pedido?.decisionAt ? (
-            <>
-              {" "}
-              · Decisión: <b>{fmtWhen(pedido?.decisionAt)}</b>
-            </>
-          ) : null}
-        </div>
-
-        {etaMin > 0 ? (
-          <div style={{ marginTop: 8, fontWeight: 900 }}>⏱️ Retirar en {etaMin} minutos</div>
-        ) : null}
-
-        {pedido?.mensaje ? (
-          <div style={{ marginTop: 10, opacity: 0.9, fontSize: 13 }}>
-            <b>Mensaje:</b> “{pedido.mensaje}”
-          </div>
-        ) : null}
-      </div>
-
-      <div className="miniCard" style={{ marginTop: 12 }}>
-        <h4>Resumen</h4>
-
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          {(pedido?.items || []).map((it, idx) => (
-            <div
-              key={idx}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-                fontSize: 13,
-                alignItems: "flex-start",
-              }}
-            >
-              <div style={{ opacity: 0.95 }}>
-                <b>{it?.nombreSnapshot}</b>
-                {it?.varianteTituloSnapshot ? ` · ${it.varianteTituloSnapshot}` : ""}
-                <span style={{ opacity: 0.8 }}> · x{it?.cantidad || 1}</span>
-              </div>
-              <div style={{ fontWeight: 900 }}>
-                $ {money(Number(it?.precioUnitSnapshot || 0) * Number(it?.cantidad || 1))}
+        {/* Body */}
+        <div className="boletaBody">
+          {/* ETA */}
+          {etaMin > 0 ? (
+            <div className="infoBox" style={{ marginBottom: 12 }}>
+              <div className="infoLabel">TIEMPO</div>
+              <div className="infoValue">⏱️ Estimado: {etaMin} minutos</div>
+              <div className="infoSmall">
+                {entregaTipo === "delivery" ? "Entrega aproximada" : "Retiro aproximado"}
               </div>
             </div>
-          ))}
+          ) : null}
 
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10 }}>
-            <b>Total</b>
-            <b>$ {money(total)}</b>
+          {/* Cliente + Entrega */}
+          <div className="infoGrid">
+            <div className="infoBox">
+              <div className="infoLabel">CLIENTE</div>
+              <div className="infoValue">{clienteNombre}</div>
+              <div className="infoSmall">📱 {clienteContacto}</div>
+            </div>
+
+            <div className="infoBox">
+              <div className="infoLabel">ENTREGA</div>
+              <div className="infoValue">
+                {entregaTipo === "delivery" ? "🚚 Delivery" : "🏪 Retiro en el local"}
+              </div>
+              {entregaTipo === "delivery" ? (
+                <>
+                  <div className="infoSmall">
+                    {barrioNombre ? `📍 ${barrioNombre}` : null}
+                    {barrioNombre && direccion ? " · " : null}
+                    {direccion ? `🏠 ${direccion}` : null}
+                  </div>
+                  <div className="infoSmall">Envío: $ {money(envio)}</div>
+                </>
+              ) : (
+                <div className="infoSmall">No se suma envío.</div>
+              )}
+            </div>
           </div>
 
-          <div style={{ marginTop: 8, opacity: 0.9, fontSize: 13 }}>
-            Pago: <b>{pago}</b>
-            {pago === "sena" || pago === "total" ? (
-              <>
-                {" "}
-                · Pagás ahora: <b>$ {money(montoAhora)}</b>
-              </>
-            ) : null}
-            {pago === "efectivo" ? <> · Pagás al retirar</> : null}
+          {/* Nota */}
+          {pedido?.mensaje ? (
+            <div className="notaBox">
+              <div className="notaTitle">📝 MENSAJE / NOTA</div>
+              <div className="notaText">{String(pedido.mensaje)}</div>
+            </div>
+          ) : null}
+
+          {/* Items */}
+          <div className="boletaSection">
+            <div className="boletaH">DETALLE</div>
+
+            <div className="items">
+              {(pedido?.items || []).map((it, idx) => {
+                const qty = Number(it?.cantidad || 1);
+                const name = String(it?.nombreSnapshot || "Item");
+                const varTxt = it?.varianteTituloSnapshot ? ` · ${it.varianteTituloSnapshot}` : "";
+                const sub = Number(it?.precioUnitSnapshot || 0) * qty;
+
+                return (
+                  <div className="itRow" key={`${it?.productoId || "x"}-${idx}`}>
+                    <div className="itLeft">
+                      <div className="itName">
+                        <span style={{ opacity: 0.85, fontWeight: 950 }}>x{qty}</span> · {name}
+                        {varTxt}
+                      </div>
+                      <div className="itMeta">$ {money(Number(it?.precioUnitSnapshot || 0))} c/u</div>
+                    </div>
+                    <div className="itPrice">$ {money(sub)}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Totales */}
+            <div className="totals">
+              <div className="totLine">
+                <span className="muted">Subtotal</span>
+                <span>$ {money(subtotal)}</span>
+              </div>
+
+              {entregaTipo === "delivery" ? (
+                <div className="totLine">
+                  <span className="muted">Envío</span>
+                  <span>$ {money(envio)}</span>
+                </div>
+              ) : null}
+
+              <div className="totBig">
+                <span>TOTAL</span>
+                <span>$ {money(totalFinal)}</span>
+              </div>
+
+              <div style={{ marginTop: 10, opacity: 0.92, fontWeight: 900, fontSize: 13 }}>
+                Pago: <b>{pago.badge}</b> · {pago.line1}
+                {pago.line2 ? <span style={{ opacity: 0.9 }}> · {pago.line2}</span> : null}
+              </div>
+            </div>
           </div>
+        </div>
+
+        {/* Footer actions */}
+        <div className="boletaActions">
+          <button className="btnGhost" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
+            Seguir comprando
+          </button>
+          <button className="btnPrimary" type="button" onClick={() => nav(-1)}>
+            Volver
+          </button>
         </div>
       </div>
     </div>

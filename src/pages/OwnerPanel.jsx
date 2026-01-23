@@ -21,15 +21,28 @@ import { useAdminSession } from "../lib/adminSession.js";
 import { money } from "../lib/money.js";
 import { openWhatsAppTo } from "../lib/whatsapp.js";
 
+// ✅ usamos tu delivery.js si querés “resolver nombre/precio” desde key
+import { getBarrioByKey } from "../lib/delivery.js";
+
 /* ===========================
    HELPERS
    =========================== */
-function calcTotalPedido(p) {
+function calcSubTotalPedido(p) {
   const items = Array.isArray(p?.items) ? p.items : [];
   return items.reduce(
     (acc, it) => acc + Number(it?.precioUnitSnapshot || 0) * Number(it?.cantidad || 1),
     0
   );
+}
+
+// ✅ total “real”: si existe totalFinalSnapshot (subTotal + envío) lo usamos
+function calcTotalPedido(p) {
+  const tf = Number(p?.totalFinalSnapshot ?? p?.totalSnapshot ?? NaN);
+  if (Number.isFinite(tf)) return tf;
+
+  const sub = calcSubTotalPedido(p);
+  const envio = Number(p?.envioPrecioSnapshot || 0);
+  return sub + envio;
 }
 
 function isTodayFromTs(ts) {
@@ -54,12 +67,12 @@ function estadoInfo(estado) {
   return { icon: "•", label: estado || "—" };
 }
 
-function pagoInfo(pedido, total) {
+function pagoInfo(pedido, totalFinal) {
   const pago = String(pedido?.pagoElegido || "").toLowerCase();
   const pagado = Number(pedido?.montoAPagarSnapshot || 0);
 
   if (pago === "sena") {
-    const falta = Math.max(0, total - pagado);
+    const falta = Math.max(0, totalFinal - pagado);
     return {
       badge: "SEÑA",
       line1: `Pagó $ ${money(pagado)}`,
@@ -70,14 +83,14 @@ function pagoInfo(pedido, total) {
   if (pago === "efectivo") {
     return {
       badge: "EFECTIVO",
-      line1: "Paga al retirar",
-      line2: `Total $ ${money(total)}`,
+      line1: "Paga al recibir/retirar",
+      line2: `Total $ ${money(totalFinal)}`,
     };
   }
 
   return {
     badge: "TOTAL",
-    line1: `Pagó $ ${money(total)}`,
+    line1: `Pagó $ ${money(totalFinal)}`,
     line2: "—",
   };
 }
@@ -85,6 +98,34 @@ function pagoInfo(pedido, total) {
 function tsToMs(ts) {
   if (!ts?.seconds) return 0;
   return Number(ts.seconds) * 1000 + Math.floor(Number(ts.nanoseconds || 0) / 1e6);
+}
+
+/* ===========================
+   DELIVERY / RETIRO helpers
+   =========================== */
+function entregaInfo(pedido) {
+  const tipo = String(pedido?.entregaTipo || pedido?.entrega || "retiro").toLowerCase(); // tolerante
+
+  const envioPrecio = Number(pedido?.envioPrecioSnapshot || 0);
+  const direccion = String(pedido?.direccionSnapshot || pedido?.direccion || "").trim();
+
+  // barrio por snapshot o por key
+  const barrioKey = String(pedido?.barrioKeySnapshot || pedido?.barrioKey || "").trim();
+  const barrioNombreSnapshot = String(pedido?.barrioNombreSnapshot || pedido?.barrioNombre || "").trim();
+  const barrioObj = barrioKey ? getBarrioByKey(barrioKey) : null;
+  const barrioNombre = barrioNombreSnapshot || barrioObj?.nombre || (barrioKey ? barrioKey : "");
+
+  const isDelivery = tipo === "delivery";
+
+  return {
+    tipo: isDelivery ? "delivery" : "retiro",
+    label: isDelivery ? "DELIVERY" : "RETIRO",
+    icon: isDelivery ? "🛵" : "🏪",
+    envioPrecio,
+    direccion,
+    barrioKey,
+    barrioNombre,
+  };
 }
 
 /* ===========================
@@ -115,9 +156,13 @@ function playBeep() {
     setTimeout(() => {
       try {
         ctx.close();
-      } catch {console.log('first')}
+      } catch {
+        // noop
+      }
     }, 250);
-  } catch {console.log('first')}
+  } catch {
+    // noop
+  }
 }
 
 function notifyNewOrder({ title, body }) {
@@ -134,16 +179,19 @@ function notifyNewOrder({ title, body }) {
         if (perm === "granted") new Notification(title, { body });
       });
     }
-  } catch {console.log('first')}
+  } catch {
+    // noop
+  }
 }
 
 /* ===========================
    CARD (modo cocina) - simple y clara
    =========================== */
 function PedidoCard({ pedido, onAction, tiendaId }) {
-  const total = calcTotalPedido(pedido);
+  const totalFinal = calcTotalPedido(pedido);
+  const subTotal = calcSubTotalPedido(pedido);
   const est = estadoInfo(pedido?.estado);
-  const pago = pagoInfo(pedido, total);
+  const pago = pagoInfo(pedido, totalFinal);
 
   const nombre =
     `${pedido?.cliente?.nombre || ""} ${pedido?.cliente?.apellido || ""}`.trim() || "—";
@@ -152,14 +200,19 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
   const eta = Number(pedido?.etaMin || 0);
   const nota = String(pedido?.mensaje || "").trim();
 
+  const entrega = entregaInfo(pedido);
+
   return (
     <div className="miniCard cocinaCard">
       {/* HEADER */}
       <div className="cocinaHeader">
         <div className="cocinaWho">
           <div className="cocinaName">{nombre}</div>
+
           <div className="cocinaMeta">
-            <span>📱 <b>{contacto}</b></span>
+            <span>
+              📱 <b>{contacto}</b>
+            </span>
             {eta > 0 ? <span className="cocinaEta">⏱ {eta}m</span> : null}
           </div>
         </div>
@@ -187,6 +240,40 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
             💬 WA
           </button>
         </div>
+      </div>
+
+      {/* ✅ ENTREGA (MUY LLAMATIVO) */}
+      <div className={`cocinaEntrega ${entrega.tipo === "delivery" ? "isDelivery" : "isRetiro"}`}>
+        <div className="cocinaEntregaMain">
+          <span className="cocinaEntregaIcon">{entrega.icon}</span>
+          <span className="cocinaEntregaLabel">{entrega.label}</span>
+          {entrega.tipo === "delivery" && Number.isFinite(entrega.envioPrecio) && entrega.envioPrecio > 0 ? (
+            <span className="cocinaEntregaPrice">ENVÍO $ {money(entrega.envioPrecio)}</span>
+          ) : null}
+        </div>
+
+        {entrega.tipo === "delivery" ? (
+          <div className="cocinaEntregaDetails">
+            {entrega.barrioNombre ? (
+              <div>
+                <b>Barrio:</b> {entrega.barrioNombre}
+              </div>
+            ) : null}
+            {entrega.direccion ? (
+              <div>
+                <b>Dirección:</b> {entrega.direccion}
+              </div>
+            ) : (
+              <div style={{ opacity: 0.9 }}>
+                <b>Dirección:</b> —
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="cocinaEntregaDetails" style={{ opacity: 0.9 }}>
+            Retira en el local.
+          </div>
+        )}
       </div>
 
       {/* ITEMS */}
@@ -221,13 +308,33 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
         </div>
       ) : null}
 
-      {/* PAGO + TOTAL */}
+      {/* ✅ RESUMEN DE TOTALES (si hay envío, se muestra) */}
+      <div className="cocinaTotales">
+        <div className="cocinaTotRow">
+          <span>Subtotal</span>
+          <b>$ {money(subTotal)}</b>
+        </div>
+
+        {entrega.tipo === "delivery" ? (
+          <div className="cocinaTotRow">
+            <span>Envío</span>
+            <b>$ {money(Number(entrega.envioPrecio || 0))}</b>
+          </div>
+        ) : null}
+
+        <div className="cocinaTotRow total">
+          <span>Total</span>
+          <b>$ {money(totalFinal)}</b>
+        </div>
+      </div>
+
+      {/* PAGO */}
       <div className="cocinaFooter">
         <div className="cocinaPago">
           <b>{pago.badge}</b> · {pago.line1}
           {pago?.line2 && pago.line2 !== "—" ? <span className="cocinaPago2"> · {pago.line2}</span> : null}
         </div>
-        <div className="cocinaTotal">$ {money(total)}</div>
+        <div className="cocinaTotal">$ {money(totalFinal)}</div>
       </div>
 
       {/* ACCIONES */}
@@ -286,32 +393,29 @@ export default function OwnerPanel() {
   const seenIdsRef = useRef(new Set());
   const hydratedRef = useRef(false);
 
-  // Pedimos permiso de notificaciones una vez (si está disponible)
   useEffect(() => {
     try {
       if ("Notification" in window && Notification.permission === "default") {
         Notification.requestPermission().catch(() => {});
       }
-    } catch {console.log('first')}
+    } catch {
+      // noop
+    }
   }, []);
 
   function handleIncomingPendientes(arr) {
-    // En el primer snapshot, solo “hidrata” el set
     if (!hydratedRef.current) {
       hydratedRef.current = true;
       seenIdsRef.current = new Set(arr.map((x) => x.id));
       return;
     }
 
-    // Detectar IDs nuevos
     const prev = seenIdsRef.current;
     const nuevos = arr.filter((x) => x?.id && !prev.has(x.id));
 
     if (nuevos.length) {
-      // Actualizar set
       nuevos.forEach((x) => prev.add(x.id));
 
-      // Noti + beep (uno por tanda)
       const first = nuevos[0];
       const nombre =
         `${first?.cliente?.nombre || ""} ${first?.cliente?.apellido || ""}`.trim() || "Nuevo pedido";
@@ -331,37 +435,19 @@ export default function OwnerPanel() {
 
     const base = collection(db, "tiendas", String(tiendaId), "pedidos");
 
-    // ✅ (1) FIFO REAL:
-    // pendientes: orderBy ASC (más viejos arriba)
-    const qPend = query(
-      base,
-      where("estado", "==", "pendiente"),
-      orderBy("createdAt", "asc"),
-      limit(120)
-    );
-
-    // encurso: más nuevos arriba (para ver lo último que tocaste)
+    const qPend = query(base, where("estado", "==", "pendiente"), orderBy("createdAt", "asc"), limit(120));
     const qEnCurso = query(
       base,
       where("estado", "in", ["aceptado", "en_preparacion", "listo"]),
       orderBy("createdAt", "desc"),
       limit(120)
     );
-
-    const qPas = query(
-      base,
-      where("estado", "in", ["rechazado", "entregado"]),
-      orderBy("createdAt", "desc"),
-      limit(120)
-    );
+    const qPas = query(base, where("estado", "in", ["rechazado", "entregado"]), orderBy("createdAt", "desc"), limit(120));
 
     const unsub1 = onSnapshot(qPend, (snap) => {
       const arr = [];
       snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
-
-      // defensivo por si algún doc viene sin createdAt
       arr.sort((a, b) => tsToMs(a?.createdAt) - tsToMs(b?.createdAt));
-
       setPendientes(arr);
       handleIncomingPendientes(arr);
     });
@@ -430,63 +516,29 @@ export default function OwnerPanel() {
     const ref = doc(db, "tiendas", String(tiendaId), "pedidos", String(pedido.id));
 
     if (type === "aceptar") {
-      await updateDoc(ref, {
-        estado: "aceptado",
-        etaMin: 0,
-        decisionAt: serverTimestamp(),
-      });
+      await updateDoc(ref, { estado: "aceptado", etaMin: 0, decisionAt: serverTimestamp() });
       return;
     }
 
     if (type === "rechazar") {
-      await updateDoc(ref, {
-        estado: "rechazado",
-        closedAt: serverTimestamp(),
-        decisionAt: serverTimestamp(),
-      });
+      await updateDoc(ref, { estado: "rechazado", closedAt: serverTimestamp(), decisionAt: serverTimestamp() });
       return;
     }
 
     if (type === "en5") {
-      await updateDoc(ref, {
-        estado: "en_preparacion",
-        etaMin: 5,
-      });
-
-      openWhatsAppTo({
-        pedido,
-        tiendaId,
-        tipo: "en5",
-        money,
-        calcTotalPedido,
-        pagoInfo,
-      });
+      await updateDoc(ref, { estado: "en_preparacion", etaMin: 5 });
+      openWhatsAppTo({ pedido, tiendaId, tipo: "en5", money, calcTotalPedido, pagoInfo });
       return;
     }
 
     if (type === "listo") {
-      await updateDoc(ref, {
-        estado: "listo",
-        etaMin: 0,
-        readyAt: serverTimestamp(),
-      });
-
-      openWhatsAppTo({
-        pedido,
-        tiendaId,
-        tipo: "listo",
-        money,
-        calcTotalPedido,
-        pagoInfo,
-      });
+      await updateDoc(ref, { estado: "listo", etaMin: 0, readyAt: serverTimestamp() });
+      openWhatsAppTo({ pedido, tiendaId, tipo: "listo", money, calcTotalPedido, pagoInfo });
       return;
     }
 
     if (type === "entregado") {
-      await updateDoc(ref, {
-        estado: "entregado",
-        closedAt: serverTimestamp(),
-      });
+      await updateDoc(ref, { estado: "entregado", closedAt: serverTimestamp() });
       return;
     }
 
@@ -508,11 +560,10 @@ export default function OwnerPanel() {
 
   return (
     <div style={{ padding: 14, maxWidth: 1100, margin: "0 auto" }}>
-      {/* styles locales (grilla + nota) */}
       <style>{`
         .cocinaGrid{
           display:grid;
-          grid-template-columns: 1fr 1fr; /* (4) 2 columnas */
+          grid-template-columns: 1fr 1fr;
           gap: 3.5rem;
         }
         @media (max-width: 860px){
@@ -521,7 +572,7 @@ export default function OwnerPanel() {
 
         .cocinaCard{
           padding: 14px;
-          margin-bottom: 0 !important; /* la grilla maneja el gap */
+          margin-bottom: 0 !important;
         }
 
         .cocinaHeader{
@@ -571,7 +622,62 @@ export default function OwnerPanel() {
           white-space: nowrap;
         }
 
+        /* ✅ ENTREGA MUY LLAMATIVA */
+        .cocinaEntrega{
+          margin-top: 10px;
+          padding: 12px;
+          border-radius: 16px;
+          border: 1px solid rgba(255,255,255,.10);
+          background: rgba(255,255,255,.04);
+        }
+        .cocinaEntrega.isDelivery{
+          border: 1px solid rgba(0,255,180,.22);
+          background: rgba(0,255,180,.08);
+          animation: entregaPulse 1.6s ease-in-out infinite;
+        }
+        .cocinaEntrega.isRetiro{
+          border: 1px solid rgba(255,255,255,.10);
+          background: rgba(255,255,255,.03);
+        }
+        @keyframes entregaPulse{
+          0%,100%{ transform: scale(1); box-shadow: 0 0 0 rgba(0,255,180,0); }
+          50%{ transform: scale(1.01); box-shadow: 0 0 0 6px rgba(0,255,180,.06); }
+        }
+        .cocinaEntregaMain{
+          display:flex;
+          align-items:center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .cocinaEntregaIcon{
+          font-size: 18px;
+        }
+        .cocinaEntregaLabel{
+          font-weight: 1000;
+          letter-spacing: .06em;
+          font-size: 14px;
+        }
+        .cocinaEntregaPrice{
+          margin-left: auto;
+          font-weight: 1000;
+          font-size: 14px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(0,0,0,.18);
+          border: 1px solid rgba(0,0,0,.20);
+        }
+        .cocinaEntregaDetails{
+          margin-top: 8px;
+          font-size: 13px;
+          opacity: .95;
+          display:flex;
+          flex-direction: column;
+          gap: 4px;
+          word-break: break-word;
+        }
+
         .cocinaBlockTitle{
+          margin-top: 14px;
           opacity: .75;
           font-size: 12px;
           margin-bottom: 8px;
@@ -620,7 +726,6 @@ export default function OwnerPanel() {
           white-space: nowrap;
         }
 
-        /* (5) NOTA ultra visible + pulse */
         .cocinaNota{
           margin-top: 12px;
           padding: 12px;
@@ -645,6 +750,33 @@ export default function OwnerPanel() {
         @keyframes notaPulse{
           0%,100%{ transform: scale(1); box-shadow: 0 0 0 rgba(255,122,0,0); }
           50%{ transform: scale(1.01); box-shadow: 0 0 0 6px rgba(255,122,0,.06); }
+        }
+
+        /* ✅ Totales */
+        .cocinaTotales{
+          margin-top: 12px;
+          padding: 10px 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,.08);
+          background: rgba(255,255,255,.03);
+          display:flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .cocinaTotRow{
+          display:flex;
+          justify-content: space-between;
+          gap: 10px;
+          font-size: 13px;
+          opacity: .95;
+        }
+        .cocinaTotRow.total{
+          padding-top: 6px;
+          margin-top: 4px;
+          border-top: 1px dashed rgba(255,255,255,.10);
+          font-size: 14px;
+          font-weight: 950;
+          opacity: 1;
         }
 
         .cocinaFooter{
