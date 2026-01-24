@@ -51,12 +51,7 @@ export default function MenuSecciones({ productos = [], onSelect }) {
 
               <div className="flyerList">
                 {items.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className="flyerRowBtn"
-                    onClick={() => onSelect?.(p)}
-                  >
+                  <button key={p.id} type="button" className="flyerRowBtn" onClick={() => onSelect?.(p)}>
                     <div className="flyerRow">
                       <div className="flyerItem">
                         <div className="flyerNombre">{p?.nombre || "Producto"}</div>

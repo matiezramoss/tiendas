@@ -1,6 +1,7 @@
 // PATH: src/pages/TiendaPublica.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 
 import { getTiendaBySlug, listProductos } from "../lib/db.js";
 import { applyTheme } from "../lib/theme.js";
@@ -31,7 +32,7 @@ export default function TiendaPublica() {
   const [productoSel, setProductoSel] = useState(null);
 
   const [carritoOpen, setCarritoOpen] = useState(false);
-  const [carrito, setCarrito] = useState([]); // items normalizados
+  const [carrito, setCarrito] = useState([]);
 
   useEffect(() => {
     let alive = true;
@@ -63,7 +64,10 @@ export default function TiendaPublica() {
   }, [slug]);
 
   const totalCarrito = useMemo(() => calcTotal(carrito), [carrito]);
-  const cantItems = useMemo(() => (carrito || []).reduce((a, it) => a + Number(it?.cantidad || 1), 0), [carrito]);
+  const cantItems = useMemo(
+    () => (carrito || []).reduce((a, it) => a + Number(it?.cantidad || 1), 0),
+    [carrito]
+  );
 
   function abrirProducto(p) {
     if (!isProductoDisponibleAhora(p, tienda)) {
@@ -81,11 +85,7 @@ export default function TiendaPublica() {
     }
 
     setCarrito((prev) => {
-      const key = [
-        item.productoId,
-        item.varianteKey,
-        JSON.stringify(item.opcionesSnapshot || []),
-      ].join("|");
+      const key = [item.productoId, item.varianteKey, JSON.stringify(item.opcionesSnapshot || [])].join("|");
 
       const i = prev.findIndex((x) => x._key === key);
       if (i >= 0) {
@@ -99,6 +99,7 @@ export default function TiendaPublica() {
       return [...prev, { ...item, _key: key }];
     });
 
+    // ✅ abrimos carrito al agregar (siempre funciona)
     setCarritoOpen(true);
   }
 
@@ -111,7 +112,6 @@ export default function TiendaPublica() {
   }
 
   function irCheckout() {
-    // ✅ ruta con slug (la tuya)
     nav(`/t/${slug}/checkout`, { state: { tienda, carrito } });
   }
 
@@ -136,27 +136,30 @@ export default function TiendaPublica() {
         onAdd={agregarAlCarrito}
       />
 
-      {/* ✅ BOTÓN FLOTANTE DEL CARRITO (se oculta cuando el drawer está abierto) */}
-      {!carritoOpen ? (
-        <button
-          type="button"
-          className="cartFab"
-          onClick={() => setCarritoOpen(true)}
-          aria-label="Abrir carrito"
-        >
-          <span className="cartFabIcon" aria-hidden="true">🛒</span>
+      {/* ✅ FAB SIEMPRE VISIBLE (ABRE SIEMPRE) y ✅ SE OCULTA SI EL DRAWER ESTÁ ABIERTO */}
+      {!carritoOpen
+        ? createPortal(
+            <button
+              type="button"
+              className="cartFab"
+              onClick={() => setCarritoOpen(true)}
+              aria-label="Abrir carrito"
+            >
+              <span className="cartFabIcon" aria-hidden="true">
+                🛒
+              </span>
 
-          {cantItems > 0 ? (
-            <span className="cartFabBadge">{cantItems}</span>
-          ) : null}
+              {cantItems > 0 ? <span className="cartFabBadge">{cantItems}</span> : null}
 
-          {totalCarrito > 0 ? (
-            <span className="cartFabTotal">$ {money(totalCarrito)}</span>
-          ) : (
-            <span className="cartFabTotal" style={{ opacity: 0.75 }}></span>
-          )}
-        </button>
-      ) : null}
+              {totalCarrito > 0 ? (
+                <span className="cartFabTotal">$ {money(totalCarrito)}</span>
+              ) : (
+                <span className="cartFabTotal" style={{ opacity: 0.75 }} />
+              )}
+            </button>,
+            document.body
+          )
+        : null}
 
       <CarritoDrawer
         open={carritoOpen}

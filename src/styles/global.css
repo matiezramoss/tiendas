@@ -79,3 +79,41 @@ textarea.input {
     flex-direction: column;
   }
 }
+/* =========================
+   BOTÓN CARRITO FLOTANTE
+   ========================= */
+
+.goCartBtn{
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 3000;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 12px 16px;
+  border-radius: 999px;
+
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  color: #fff;
+  font-weight: 900;
+  font-size: 13px;
+  cursor: pointer;
+
+  box-shadow: 0 18px 40px rgba(0,0,0,.45);
+}
+
+.goCartBtn:hover{
+  background: rgba(255,122,0,.25);
+  border-color: rgba(255,122,0,.6);
+}
+
+.goCartBtn:active{
+  transform: scale(.96);
+}

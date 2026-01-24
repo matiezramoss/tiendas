@@ -21,15 +21,73 @@ export function normalizePhoneForWhatsApp(raw) {
   return d;
 }
 
+function groupOpcionesText(opciones, money) {
+  const ops = Array.isArray(opciones) ? opciones : [];
+  if (!ops.length) return "";
+
+  // Agrupar por groupTitulo (fallback groupKey / "Opciones")
+  const byGroup = new Map();
+  for (const o of ops) {
+    const g = String(o?.groupTitulo || o?.groupKey || "Opciones").trim() || "Opciones";
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g).push(o);
+  }
+
+  const groups = Array.from(byGroup.entries());
+
+  // Formato:
+  //    ▸ Extras: Queso (+$200) · Bacon
+  //    ▸ Salsas: BBQ · Mayo
+  return groups
+    .map(([gTitle, arr]) => {
+      const line = (arr || [])
+        .map((o) => {
+          const t = String(o?.itemTitulo || o?.itemKey || "—").trim() || "—";
+          const ex = Number(o?.precioExtra || 0);
+          return ex > 0 ? `${t} (+$${money(ex)})` : t;
+        })
+        .join(" · ");
+
+      return `   ▸ ${gTitle}: ${line}`;
+    })
+    .join("\n");
+}
+
 export function buildItemsText(pedido) {
+  const items = Array.isArray(pedido?.items) ? pedido.items : [];
+  if (!items.length) return "—";
+
+  // Acá asumimos que `money` llega por buildWhatsAppMessage y se usa ahí.
+  // Pero buildItemsText hoy no recibe money.
+  // Solución: buildItemsText se usa desde buildWhatsAppMessage (que sí tiene money),
+  // así que dejamos buildItemsText simple y creamos buildItemsTextFull abajo.
+  return items
+    .map((it) => {
+      const qty = Number(it?.cantidad || 1);
+      const name = String(it?.nombreSnapshot || "Item").trim();
+      const varTxt = it?.varianteTituloSnapshot ? ` (${it.varianteTituloSnapshot})` : "";
+      return `• x${qty} ${name}${varTxt}`;
+    })
+    .join("\n");
+}
+
+function buildItemsTextFull(pedido, money) {
   const items = Array.isArray(pedido?.items) ? pedido.items : [];
   if (!items.length) return "—";
 
   return items
     .map((it) => {
       const qty = Number(it?.cantidad || 1);
-      const name = String(it?.nombreSnapshot || "Item").trim();
+      const name = String(it?.nombreSnapshot || "Item").trim() || "Item";
       const varTxt = it?.varianteTituloSnapshot ? ` (${it.varianteTituloSnapshot})` : "";
+
+      const optsTxt = groupOpcionesText(it?.opcionesSnapshot, money);
+
+      // Si hay opciones, las agregamos abajo del ítem
+      // • x1 Hamburguesa (Doble)
+      //    ▸ Extras: Queso (+$200) · Bacon
+      if (optsTxt) return `• x${qty} ${name}${varTxt}\n${optsTxt}`;
+
       return `• x${qty} ${name}${varTxt}`;
     })
     .join("\n");
@@ -54,7 +112,10 @@ export function buildWhatsAppMessage({
 
   const total = calcTotalPedido(pedido);
   const pago = pagoInfo(pedido, total);
-  const itemsTxt = buildItemsText(pedido);
+
+  // ✅ ahora el texto incluye agregados/opciones
+  const itemsTxt = buildItemsTextFull(pedido, money);
+
   const nota = pedido?.mensaje ? `📝 Nota: ${pedido.mensaje}` : "";
 
   let header = "";

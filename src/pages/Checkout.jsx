@@ -202,8 +202,7 @@ export default function Checkout() {
   }
 
   const requiereDeliveryOk =
-    tipoEntrega !== "delivery" ||
-    (String(direccion).trim().length >= 6 && !!barrioSel && envio > 0);
+    tipoEntrega !== "delivery" || (String(direccion).trim().length >= 6 && !!barrioSel && envio > 0);
 
   const canConfirm =
     !!tienda &&
@@ -217,9 +216,7 @@ export default function Checkout() {
     requiereDeliveryOk &&
     // Si es efectivo, no obligamos alias/cbu.
     (pagoElegido === "efectivo" || (alias && cbu)) &&
-    (pagoElegido === "total" ||
-      pagoElegido === "efectivo" ||
-      (pagoElegido === "sena" && puedeSena));
+    (pagoElegido === "total" || pagoElegido === "efectivo" || (pagoElegido === "sena" && puedeSena));
 
   async function confirmar() {
     if (!canConfirm) return;
@@ -286,7 +283,8 @@ export default function Checkout() {
         precioUnitSnapshot: Number(it.precioUnitSnapshot || 0),
         cantidad: Number(it.cantidad || 1),
         opcionesSnapshot: Array.isArray(it.opcionesSnapshot) ? it.opcionesSnapshot : [],
-        tagsHorarioSnapshot: Array.isArray(it.tagsHorarioSnapshot) ? it.tagsHorarioSnapshot : undefined,
+        // ✅ FIX: NUNCA mandar undefined a Firestore
+        ...(Array.isArray(it.tagsHorarioSnapshot) ? { tagsHorarioSnapshot: it.tagsHorarioSnapshot } : {}),
       })),
 
       pagoElegido, // "sena" | "total" | "efectivo"
@@ -310,6 +308,39 @@ export default function Checkout() {
 
     showToast("Pedido creado ✅");
     nav(`/t/${tiendaId}/pedido/${docRef.id}`, { state: { tiendaId } });
+  }
+
+  // ✅ CAMBIO INTEGRADO: helper para mostrar extras/opciones elegidas
+  function renderExtrasLines(it) {
+    const ops = Array.isArray(it?.opcionesSnapshot) ? it.opcionesSnapshot : [];
+    if (!ops.length) return null;
+
+    // Agrupamos por grupoTitulo (o grupoKey fallback)
+    const byGroup = new Map();
+    for (const o of ops) {
+      const g = String(o?.grupoTitulo || o?.grupoKey || "Opciones");
+      if (!byGroup.has(g)) byGroup.set(g, []);
+      byGroup.get(g).push(o);
+    }
+
+    const groups = Array.from(byGroup.entries());
+
+    return (
+      <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+        {groups.map(([gTitle, arr]) => (
+          <div key={gTitle} style={{ fontSize: 12, opacity: 0.85 }}>
+            <span style={{ fontWeight: 900, opacity: 0.95 }}>{gTitle}:</span>{" "}
+            {arr
+              .map((o) => {
+                const t = String(o?.itemTitulo || o?.itemKey || "—");
+                const ex = Number(o?.precioExtra || 0);
+                return ex > 0 ? `${t} (+$ ${money(ex)})` : t;
+              })
+              .join(" · ")}
+          </div>
+        ))}
+      </div>
+    );
   }
 
   if (!tienda) {
@@ -385,6 +416,9 @@ export default function Checkout() {
                       x{it.cantidad} · $ {money(it.precioUnitSnapshot)}
                     </div>
 
+                    {/* ✅ CAMBIO INTEGRADO: mostrar extras elegidos */}
+                    {renderExtrasLines(it)}
+
                     <button
                       type="button"
                       className="drawerRemove"
@@ -457,9 +491,7 @@ export default function Checkout() {
             />
 
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
-                Barrio *
-              </div>
+              <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.85, marginBottom: 8 }}>Barrio *</div>
 
               <select
                 className="input"
@@ -620,9 +652,7 @@ export default function Checkout() {
               </button>
             </div>
 
-            <div style={{ marginTop: 12, fontWeight: 900 }}>
-              A pagar ahora: $ {money(montoAPagar)}
-            </div>
+            <div style={{ marginTop: 12, fontWeight: 900 }}>A pagar ahora: $ {money(montoAPagar)}</div>
           </div>
         )}
       </div>
