@@ -1330,3 +1330,11 @@
 .cartFab{
   z-index: 12000;
 }
+.miniCard h4{
+  padding: none;
+}
+#tupedido{
+  text-align: center;
+  font-size: 1.2rem;
+  margin-bottom: 2rem;
+}

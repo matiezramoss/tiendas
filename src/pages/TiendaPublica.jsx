@@ -20,6 +20,29 @@ function calcTotal(carrito) {
   );
 }
 
+function storageKeyForCarrito(slug) {
+  return `carrito_${String(slug || "").trim() || "tienda"}`;
+}
+
+function safeParseJSON(raw, fallback) {
+  try {
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadCarritoFromStorage(slug) {
+  try {
+    const key = storageKeyForCarrito(slug);
+    const raw = localStorage.getItem(key);
+    const restored = safeParseJSON(raw, []);
+    return Array.isArray(restored) ? restored : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function TiendaPublica() {
   const { slug } = useParams();
   const nav = useNavigate();
@@ -32,8 +55,11 @@ export default function TiendaPublica() {
   const [productoSel, setProductoSel] = useState(null);
 
   const [carritoOpen, setCarritoOpen] = useState(false);
-  const [carrito, setCarrito] = useState([]);
 
+  // ✅ IMPORTANTE: inicializa desde localStorage (sin useEffect + setState)
+  const [carrito, setCarrito] = useState(() => loadCarritoFromStorage(slug));
+
+  // ✅ Cargar tienda + productos
   useEffect(() => {
     let alive = true;
 
@@ -63,6 +89,20 @@ export default function TiendaPublica() {
     };
   }, [slug]);
 
+  // ✅ Persistir carrito automáticamente
+  useEffect(() => {
+    const key = storageKeyForCarrito(slug);
+    try {
+      if (Array.isArray(carrito) && carrito.length) {
+        localStorage.setItem(key, JSON.stringify(carrito));
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch (e) {
+      console.warn("No se pudo guardar carrito en localStorage", e);
+    }
+  }, [carrito, slug]);
+
   const totalCarrito = useMemo(() => calcTotal(carrito), [carrito]);
   const cantItems = useMemo(
     () => (carrito || []).reduce((a, it) => a + Number(it?.cantidad || 1), 0),
@@ -76,6 +116,7 @@ export default function TiendaPublica() {
     }
     setProductoSel(p);
     setSheetOpen(true);
+    setCarritoOpen(false);
   }
 
   function agregarAlCarrito(item) {
@@ -99,7 +140,6 @@ export default function TiendaPublica() {
       return [...prev, { ...item, _key: key }];
     });
 
-    // ✅ abrimos carrito al agregar (siempre funciona)
     setCarritoOpen(true);
   }
 
@@ -125,6 +165,9 @@ export default function TiendaPublica() {
 
   if (!tienda) return <div className="loading">Cargando...</div>;
 
+  // ✅ FAB visible solo cuando NO hay overlays abiertos
+  const showFab = !sheetOpen && !carritoOpen;
+
   return (
     <TiendaLayout tienda={tienda}>
       <MenuSecciones productos={productos} onSelect={abrirProducto} />
@@ -136,8 +179,8 @@ export default function TiendaPublica() {
         onAdd={agregarAlCarrito}
       />
 
-      {/* ✅ FAB SIEMPRE VISIBLE (ABRE SIEMPRE) y ✅ SE OCULTA SI EL DRAWER ESTÁ ABIERTO */}
-      {!carritoOpen
+      {/* ✅ FAB SOLO SI NO HAY SHEET/DRAWER */}
+      {showFab
         ? createPortal(
             <button
               type="button"

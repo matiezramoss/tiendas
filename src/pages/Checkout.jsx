@@ -39,7 +39,7 @@ function getHorarioActual(tienda) {
   for (const k of keys) {
     const conf = horarios?.[k];
     if (!conf) continue;
-    if (isInRange(m, conf?.desde, conf?.hasta)) return { key: k, label: `Abierto (${k})`, ok: true };
+    if (isInRange(m, conf?.desde, conf?.hasta)) return { key: k, label: ``, ok: true };
   }
   return { key: "cerrado", label: "Cerrado por horario", ok: false };
 }
@@ -371,7 +371,7 @@ export default function Checkout() {
       ) : null}
 
       <div style={{ marginBottom: 10, opacity: 0.9, display: "flex", justifyContent: "space-between" }}>
-        <b>Checkout</b>
+        <b></b>
         <span style={{ fontWeight: 900 }}>{horario.label}</span>
       </div>
 
@@ -397,7 +397,7 @@ export default function Checkout() {
 
       {/* Resumen */}
       <div className="miniCard" style={{ marginBottom: 12 }}>
-        <h4>Tu pedido</h4>
+        <h4 id="tupedido">TU PEDIDO</h4>
 
         {carrito?.length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
