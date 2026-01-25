@@ -347,8 +347,8 @@ export default function Checkout() {
     return <div className="loading">No hay tienda cargada. Volvé a la tienda y tocá “Continuar”.</div>;
   }
 
-  return (
-    <div style={{ padding: 14 }}>
+return (
+  <div className="checkoutWrap">
       {toast ? (
         <div
           style={{
@@ -621,7 +621,7 @@ export default function Checkout() {
 
         {!puedeSena && aceptaSenaFlag ? (
           <div style={{ marginTop: 10, opacity: 0.75, fontSize: 12 }}>
-            * Seña habilitada pero no configurada (senaFija / senaPorcentaje). Por eso no aparece.
+            {/* * Seña habilitada pero no configurada (senaFija / senaPorcentaje). Por eso no aparece. */}
           </div>
         ) : null}
 

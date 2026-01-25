@@ -50,8 +50,14 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
   useEffect(() => {
     if (!open) return;
 
-    // ✅ lock scroll sin salto
+    // ✅ lock scroll sin salto (para que el fondo quede quieto)
     lockBodyScrollSheet();
+
+    // ✅ ESC para cerrar
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKey);
 
     const defaultVar = normalizeKey(vars[0]?.key);
     setQty(1);
@@ -59,10 +65,12 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
     setUnits([{ varKey: defaultVar, sel: {} }]);
 
     requestAnimationFrame(() => {
+      // scroll arriba del contenedor interno (si existe)
       if (sheetRef.current) sheetRef.current.scrollTop = 0;
     });
 
     return () => {
+      window.removeEventListener("keydown", onKey);
       unlockBodyScrollSheet();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -255,13 +263,12 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
     <div className="productoOverlay" onClick={onClose} role="presentation">
       <div
         className="productoSheet"
-        ref={sheetRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        {/* ✅ BODY SCROLLEABLE */}
-        <div className="sheetBody">
+        {/* ✅ SOLO ESTO SCROLLEA (web y mobile) */}
+        <div className="sheetBody" ref={sheetRef}>
           <div className="sheetTop">
             <div>
               <div className="sheetTitle">{producto?.nombre || "Producto"}</div>
@@ -274,7 +281,11 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
           </div>
 
           {activeVariante?.fotoUrl || producto?.fotoUrlBase ? (
-            <img className="sheetFoto" src={(activeVariante?.fotoUrl || producto?.fotoUrlBase || "").trim()} alt="" />
+            <img
+              className="sheetFoto"
+              src={(activeVariante?.fotoUrl || producto?.fotoUrlBase || "").trim()}
+              alt=""
+            />
           ) : null}
 
           {Number(qty || 1) > 1 ? (
@@ -360,7 +371,7 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
           ) : null}
         </div>
 
-        {/* ✅ BOTTOM FIJO (NO CORTA EL SCROLL) */}
+        {/* ✅ Bottom fijo */}
         <div className="sheetBottom">
           <div className="qty">
             <button className="qtyBtn" type="button" onClick={() => setQty((q) => Math.max(1, (q || 1) - 1))}>

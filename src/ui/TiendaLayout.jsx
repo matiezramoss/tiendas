@@ -8,26 +8,6 @@ export default function TiendaLayout({ tienda, children }) {
 
   return (
     <div className="flyer" style={cover ? { backgroundImage: `url(${cover})` } : undefined}>
-      {/* barra tipo WhatsApp */}
-      {/* <div className="waTop">
-        <button className="waBack" type="button" aria-label="Volver" onClick={() => window.history.back()}>
-          ←
-        </button>
-
-        <div className="waAvatar">
-          {logo ? <img src={logo} alt={nombre} /> : <div className="waAvatarPh">{nombre.slice(0,1).toUpperCase()}</div>}
-        </div>
-
-        <div className="waTitle">
-          <div className="waName">{nombre}</div>
-          <div className="waSub">Ayer, 19:44</div>
-        </div>
-
-        <button className="waMenu" type="button" aria-label="Menú">
-          ⋮
-        </button>
-      </div> */}
-
       {/* zona central (logo grande como flyer) */}
       <header className="flyerTop">
         {logo ? (
@@ -37,7 +17,7 @@ export default function TiendaLayout({ tienda, children }) {
         )}
       </header>
 
-      {/* contenido vidrio */}
+      {/* ✅ AHORA ESTO ES LO ÚNICO QUE SCROLLEA */}
       <main className="flyerMain">{children}</main>
     </div>
   );

@@ -604,9 +604,21 @@ export default function OwnerPanel() {
   if (!userDoc || !tiendaId) return <div className="loading">No autorizado.</div>;
 
   return (
-    <div style={{ padding: 14, maxWidth: 1100, margin: "0 auto" }}>
+  <div className="ownerWrap">
       {/* styles locales (grilla + nota + entrega + extras) */}
       <style>{`
+              /* ✅ Scroll real dentro del panel (mobile + desktop) */
+        .ownerWrap{
+          height: 100dvh;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+          padding: 14px;
+          max-width: 1100px;
+          margin: 0 auto;
+          box-sizing: border-box;
+        }
+
         .cocinaGrid{
           display:grid;
           grid-template-columns: 1fr 1fr;
@@ -898,6 +910,29 @@ export default function OwnerPanel() {
           gap: 10px;
           flex-wrap: wrap;
         }
+                  /* ✅ Mobile: nombre -> extras -> precio (precio abajo) */
+        @media (max-width: 520px){
+          .cocinaItem{
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+          }
+
+          /* el bloque izquierdo ocupa todo el ancho */
+          .cocinaItemLeft{
+            width: 100%;
+          }
+
+          /* precio baja abajo y queda alineado prolijo */
+          .cocinaItemPrice{
+            width: 100%;
+            padding-top: 0;
+            text-align: right;
+            opacity: .95;
+            font-weight: 950;
+          }
+        }
+
       `}</style>
 
       {/* top */}

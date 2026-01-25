@@ -172,7 +172,7 @@ export default function TrackingPedido() {
   const clienteContacto = String(pedido?.cliente?.contacto || "—");
 
   return (
-    <div style={{ padding: 14, maxWidth: 760, margin: "0 auto" }}>
+  <div className="trackingWrap">
       {/* ✅ estilos “boleta” + status */}
       <style>{`
         .boletaWrap{
