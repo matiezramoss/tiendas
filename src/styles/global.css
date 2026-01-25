@@ -115,3 +115,617 @@ textarea.input {
 .goCartBtn:active {
   transform: scale(0.96);
 }
+/* =========================================================
+   OWNER PANEL – MOBILE TABS + COCINA UI
+   ========================================================= */
+
+/* =========================
+   BASE / WRAPPER
+   ========================= */
+.ownerWrap{
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 14px;
+  max-width: 1100px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* =========================
+   GRID
+   ========================= */
+.cocinaGrid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3.5rem;
+  align-items: start;
+}
+
+@media (max-width: 860px){
+  .cocinaGrid{
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================
+   CARD
+   ========================= */
+.cocinaCard{
+  height: fit-content;
+  align-self: start;
+  padding: 14px;
+  margin-bottom: 0 !important;
+}
+
+/* =========================
+   HEADER
+   ========================= */
+.cocinaHeader{
+  display:flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.cocinaWho{ min-width: 0; }
+
+.cocinaName{
+  font-weight: 950;
+  font-size: 18px;
+  line-height: 1.1;
+  word-break: break-word;
+}
+
+.cocinaMeta{
+  margin-top: 6px;
+  opacity: .9;
+  font-size: 13px;
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items:center;
+}
+
+.cocinaEta{
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.06);
+  font-weight: 900;
+}
+
+.cocinaRight{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  flex-shrink: 0;
+}
+
+.cocinaEstado{
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  font-weight: 950;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* =========================
+   OWNER EXTRAS (⏰ esperando)
+   ========================= */
+.ownerExtras{
+  margin: 6px 0 2px;
+}
+
+.badgeWarn{
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 950;
+  font-size: 12px;
+  border: 1px solid rgba(255,122,0,.35);
+  background: rgba(255,122,0,.14);
+}
+
+.badgeTime{
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  opacity: .9;
+}
+
+/* =========================
+   ENTREGA
+   ========================= */
+.cocinaEntrega{
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
+}
+
+.cocinaEntrega.isDelivery{
+  border: 1px solid rgba(0,255,180,.22);
+  background: rgba(0,255,180,.08);
+  animation: entregaPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes entregaPulse{
+  0%,100%{ transform: scale(1); box-shadow: 0 0 0 rgba(0,255,180,0); }
+  50%{ transform: scale(1.01); box-shadow: 0 0 0 6px rgba(0,255,180,.06); }
+}
+
+.cocinaEntregaMain{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cocinaEntregaLabel{
+  font-weight: 1000;
+  letter-spacing: .06em;
+  font-size: 14px;
+}
+
+.cocinaEntregaDetails{
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: .95;
+  display:flex;
+  flex-direction: column;
+  gap: 4px;
+  word-break: break-word;
+}
+
+/* =========================
+   ITEMS
+   ========================= */
+.cocinaItems{
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cocinaItem{
+  display:flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  align-items: flex-start;
+}
+
+.cocinaItemName{
+  font-weight: 950;
+  font-size: 14px;
+}
+
+/* =========================
+   NOTA
+   ========================= */
+.cocinaNota{
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255,122,0,.14);
+  border: 1px solid rgba(255,122,0,.35);
+}
+
+/* =========================
+   TOTALES
+   ========================= */
+.cocinaTotales{
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* =========================================================
+   MOBILE TABS (CLAVE)
+   ========================================================= */
+
+/* hidden by default */
+.mobileTabs{ display:none; }
+.desktopSections{ display:block; }
+
+@media (max-width: 720px){
+  .mobileTabs{
+    display:flex;
+    gap:8px;
+    margin-top:14px;
+    position: sticky;
+    top:0;
+    z-index: 20;
+    padding:10px 0;
+    background: rgba(0,0,0,.75);
+    backdrop-filter: blur(8px);
+  }
+
+  .tabBtn{
+    flex:1;
+    border-radius:999px;
+    padding:10px;
+    font-weight:950;
+    font-size:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.06);
+    color:inherit;
+  }
+
+  .tabBtn.active{
+    background: rgba(255,255,255,.16);
+    border:1px solid rgba(255,255,255,.25);
+  }
+
+  /* 🔥 clave */
+  .desktopSections{ display:none; }
+  .mobileSection{ margin-top:12px; }
+}
+
+
+/* ============================
+   OWNER PANEL (GLOBAL)
+   Pegalo en: src/global.css
+   ============================ */
+
+/* Base del panel */
+.ownerWrap{
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 14px;
+  box-sizing: border-box;
+}
+
+/* Grid de cards (base) */
+.cocinaGrid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+/* Card del pedido */
+.cocinaCard{
+  height: fit-content;
+  align-self: start;
+  padding: 14px;
+  border-radius: 18px;
+}
+
+/* MOBILE: centrado y una columna */
+@media (max-width: 720px){
+  .cocinaGrid{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .cocinaCard{
+    width: 100%;
+    max-width: 520px;
+  }
+
+  .mobileSection{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+/* Tabs (mobile + desktop) */
+.mobileTabs{
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 10px 0;
+  background: rgba(0,0,0,.72);
+  backdrop-filter: blur(8px);
+}
+
+.tabBtn{
+  flex: 1;
+  max-width: 240px;
+  border-radius: 999px;
+  padding: 10px 12px;
+  font-weight: 950;
+  font-size: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: inherit;
+  cursor: pointer;
+}
+
+.tabBtn.active{
+  background: rgba(255,255,255,.14);
+  border: 1px solid rgba(255,255,255,.22);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 720px){
+  .tabBtn{ max-width: 160px; }
+}
+
+/* IMPORTANTE: si en tu JSX dejaste desktopSections por las dudas,
+   esto lo apaga globalmente */
+.desktopSections{ display: none; }
+
+/* ============================
+   TIPOGRAFÍA / ESPACIADO dentro de la card
+   (esto hace que se vea como tu captura)
+   ============================ */
+
+/* Header */
+.cocinaHeader{
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.cocinaWho{ min-width: 0; }
+
+.cocinaName{
+  font-weight: 950;
+  font-size: 20px;
+  line-height: 1.05;
+  letter-spacing: .2px;
+}
+
+.cocinaMeta{
+  margin-top: 6px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  opacity: .9;
+  font-size: 13px;
+}
+
+.cocinaRight{
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.cocinaEstado{
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 900;
+  font-size: 13px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+.cocinaEta{
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 900;
+  font-size: 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+/* Entrega */
+.cocinaEntrega{
+  margin: 10px 0 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+}
+
+.cocinaEntregaMain{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 950;
+}
+
+.cocinaEntregaIcon{ font-size: 18px; }
+.cocinaEntregaLabel{ font-size: 18px; letter-spacing: .5px; }
+.cocinaEntregaPrice{
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 950;
+  opacity: .95;
+}
+
+.cocinaEntregaDetails{
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: .92;
+  line-height: 1.35;
+}
+
+/* Items */
+.cocinaBlockTitle{
+  font-weight: 950;
+  font-size: 18px;
+  margin: 8px 0 8px;
+  letter-spacing: .4px;
+  opacity: .95;
+}
+
+.cocinaItems{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cocinaItem{
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.cocinaItemLeft{ min-width: 0; }
+
+.cocinaItemName{
+  font-weight: 900;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.cocinaQty{ opacity: .9; margin-right: 6px; }
+
+.cocinaVar{
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: .85;
+}
+
+.cocinaItemPrice{
+  font-weight: 950;
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+/* Nota */
+.cocinaNota{
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,140,0,.25);
+  background: rgba(255,140,0,.10);
+}
+
+.cocinaNotaTitle{
+  font-weight: 950;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.cocinaNotaText{
+  font-size: 14px;
+  opacity: .95;
+}
+
+/* Totales */
+.cocinaTotales{
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.04);
+}
+
+.cocinaTotRow{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.cocinaTotRow.total{
+  border-top: 1px solid rgba(255,255,255,.08);
+  margin-top: 6px;
+  padding-top: 10px;
+  font-size: 16px;
+}
+
+.cocinaTotRow.total b{
+  font-size: 20px;
+}
+
+/* Footer pago */
+.cocinaFooter{
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.cocinaPago{
+  font-size: 14px;
+  opacity: .95;
+}
+
+.cocinaPago2{ opacity: .85; }
+
+.cocinaTotal{
+  font-weight: 950;
+  font-size: 24px;
+}
+
+/* Acciones */
+.cocinaActions{
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ============================
+   DESKTOP: TODO MÁS GRANDE
+   (lo que me pediste)
+   ============================ */
+@media (min-width: 900px){
+  .ownerWrap{ max-width: 1180px; padding: 18px; }
+
+  .cocinaGrid{ gap: 28px; }
+  .cocinaCard{ padding: 18px; border-radius: 20px; }
+
+  .cocinaName{ font-size: 26px; }
+  .cocinaMeta{ font-size: 15px; }
+
+  .cocinaEstado{ font-size: 14px; padding: 9px 14px; }
+  .cocinaEta{ font-size: 13px; padding: 7px 12px; }
+
+  .cocinaEntrega{ padding: 14px; }
+  .cocinaEntregaLabel{ font-size: 20px; }
+  .cocinaEntregaDetails{ font-size: 14px; }
+
+  .cocinaBlockTitle{ font-size: 20px; }
+
+  .cocinaItem{ padding: 14px; }
+  .cocinaItemName{ font-size: 18px; }
+  .cocinaVar{ font-size: 14px; }
+  .cocinaItemPrice{ font-size: 24px; }
+
+  .cocinaNotaTitle{ font-size: 18px; }
+  .cocinaNotaText{ font-size: 15px; }
+
+  .cocinaTotRow{ font-size: 15px; }
+  .cocinaTotRow.total{ font-size: 18px; }
+  .cocinaTotRow.total b{ font-size: 24px; }
+
+  .cocinaPago{ font-size: 15px; }
+  .cocinaTotal{ font-size: 30px; }
+
+  .tabBtn{ font-size: 13px; padding: 11px 14px; max-width: 260px; }
+}

@@ -1,4 +1,5 @@
 // PATH: src/pages/OwnerPanel.jsx
+import OwnerExtras from "./OwnerExtras.jsx";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -204,7 +205,7 @@ function notifyNewOrder({ title, body }) {
 /* ===========================
    CARD (modo cocina) - simple y clara
    =========================== */
-function PedidoCard({ pedido, onAction, tiendaId }) {
+function PedidoCard({ pedido, onAction, tiendaId, db, pedidosHoy }) {
   const totalFinal = calcTotalPedido(pedido);
   const subTotal = calcSubTotalPedido(pedido);
   const est = estadoInfo(pedido?.estado);
@@ -259,6 +260,14 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
         </div>
       </div>
 
+      {/* ⭐ EXTRAS DEL DUEÑO (pin, ETA, copiar, esperando, insight) */}
+      <OwnerExtras
+        pedido={pedido}
+        tiendaId={tiendaId}
+        db={db}
+        pedidosHoy={pedidosHoy || []}
+      />
+
       {/* ✅ ENTREGA (MUY LLAMATIVO) */}
       <div className={`cocinaEntrega ${entrega.tipo === "delivery" ? "isDelivery" : "isRetiro"}`}>
         <div className="cocinaEntregaMain">
@@ -302,7 +311,6 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
           const varTxt = it?.varianteTituloSnapshot ? ` · ${it.varianteTituloSnapshot}` : "";
           const sub = Number(it?.precioUnitSnapshot || 0) * qty;
 
-          // ✅ NUEVO: extras elegidos por item
           const extrasArr = getExtrasDeItem(it);
 
           return (
@@ -315,7 +323,6 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
 
                 {varTxt ? <div className="cocinaVar">{varTxt}</div> : null}
 
-                {/* ✅ NUEVO: MOSTRAR EXTRAS/OPCIONES */}
                 {extrasArr.length ? (
                   <div className="cocinaExtras">
                     <div className="cocinaExtrasTitle">Extras / Opciones:</div>
@@ -353,7 +360,7 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
         </div>
       ) : null}
 
-      {/* ✅ RESUMEN DE TOTALES (si hay envío, se muestra) */}
+      {/* ✅ RESUMEN DE TOTALES */}
       <div className="cocinaTotales">
         <div className="cocinaTotRow">
           <span>Subtotal</span>
@@ -422,6 +429,7 @@ function PedidoCard({ pedido, onAction, tiendaId }) {
   );
 }
 
+
 /* ===========================
    PAGE
    =========================== */
@@ -429,6 +437,9 @@ export default function OwnerPanel() {
   const db = getFirestore(app);
   const nav = useNavigate();
   const { loading, userDoc, tiendaId } = useAdminSession();
+
+  // ✅ Mobile tabs
+  const [tab, setTab] = useState("pendientes"); // "pendientes" | "encurso" | "pasados"
 
   const [pendientes, setPendientes] = useState([]);
   const [encurso, setEncurso] = useState([]);
@@ -472,6 +483,9 @@ export default function OwnerPanel() {
       });
 
       playBeep();
+
+      // ✅ (opcional) si querés que te lleve siempre a pendientes cuando entra uno nuevo:
+      // setTab("pendientes");
     }
   }
 
@@ -480,14 +494,26 @@ export default function OwnerPanel() {
 
     const base = collection(db, "tiendas", String(tiendaId), "pedidos");
 
-    const qPend = query(base, where("estado", "==", "pendiente"), orderBy("createdAt", "asc"), limit(120));
+    const qPend = query(
+      base,
+      where("estado", "==", "pendiente"),
+      orderBy("createdAt", "asc"),
+      limit(120)
+    );
+
     const qEnCurso = query(
       base,
       where("estado", "in", ["aceptado", "en_preparacion", "listo"]),
       orderBy("createdAt", "desc"),
       limit(120)
     );
-    const qPas = query(base, where("estado", "in", ["rechazado", "entregado"]), orderBy("createdAt", "desc"), limit(120));
+
+    const qPas = query(
+      base,
+      where("estado", "in", ["rechazado", "entregado"]),
+      orderBy("createdAt", "desc"),
+      limit(120)
+    );
 
     const unsub1 = onSnapshot(qPend, (snap) => {
       const arr = [];
@@ -555,6 +581,12 @@ export default function OwnerPanel() {
     };
   }, [entregadosHoy]);
 
+  const tabTitle = useMemo(() => {
+    if (tab === "pendientes") return `🟠 Pedidos pendientes (${pendientes.length})`;
+    if (tab === "encurso") return `🟢 En preparación / Listos (${encurso.length})`;
+    return `⚫ Pedidos pasados (${pasadosHoy.length})`;
+  }, [tab, pendientes.length, encurso.length, pasadosHoy.length]);
+
   async function onAction(type, pedido) {
     if (!pedido?.id || !tiendaId) return;
 
@@ -566,7 +598,11 @@ export default function OwnerPanel() {
     }
 
     if (type === "rechazar") {
-      await updateDoc(ref, { estado: "rechazado", closedAt: serverTimestamp(), decisionAt: serverTimestamp() });
+      await updateDoc(ref, {
+        estado: "rechazado",
+        closedAt: serverTimestamp(),
+        decisionAt: serverTimestamp(),
+      });
       return;
     }
 
@@ -604,10 +640,9 @@ export default function OwnerPanel() {
   if (!userDoc || !tiendaId) return <div className="loading">No autorizado.</div>;
 
   return (
-  <div className="ownerWrap">
-      {/* styles locales (grilla + nota + entrega + extras) */}
+    <div className="ownerWrap">
       <style>{`
-              /* ✅ Scroll real dentro del panel (mobile + desktop) */
+        /* ✅ Scroll real dentro del panel (mobile + desktop) */
         .ownerWrap{
           height: 100dvh;
           overflow-y: auto;
@@ -620,475 +655,97 @@ export default function OwnerPanel() {
         }
 
         .cocinaGrid{
-  display:grid;
+  display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 3.5rem;
-
-  align-items: start; 
+  gap: 24px;
+  align-items: start;
 }
 
-
         .cocinaCard{
-  height: fit-content;      
-  align-self: start;      
-}
-        @media (max-width: 860px){
-          .cocinaGrid{ grid-template-columns: 1fr; }
-        }
-
-        .cocinaCard{
+          height: fit-content;
+          align-self: start;
           padding: 14px;
           margin-bottom: 0 !important;
         }
 
-        .cocinaHeader{
-          display:flex;
-          justify-content: space-between;
-          gap: 12px;
-          align-items: center;
-          margin-bottom: 12px;
-        }
-        .cocinaWho{ min-width: 0; }
-        .cocinaName{
-          font-weight: 950;
-          font-size: 18px;
-          line-height: 1.1;
-          word-break: break-word;
-        }
-        .cocinaMeta{
-          margin-top: 6px;
-          opacity: .9;
-          font-size: 13px;
-          display:flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          align-items:center;
-        }
-        .cocinaEta{
-          padding: 4px 8px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,.10);
-          background: rgba(255,255,255,.06);
-          font-weight: 900;
-        }
 
-        .cocinaRight{
-          display:flex;
-          gap: 10px;
-          align-items:center;
-          flex-shrink: 0;
-        }
-        .cocinaEstado{
-          padding: 8px 12px;
-          border-radius: 999px;
-          background: rgba(255,255,255,.06);
-          border: 1px solid rgba(255,255,255,.10);
-          font-weight: 950;
-          font-size: 13px;
-          white-space: nowrap;
-        }
 
-        /* ✅ ENTREGA MUY LLAMATIVA */
-        .cocinaEntrega{
-          margin-top: 10px;
-          padding: 12px;
-          border-radius: 16px;
-          border: 1px solid rgba(255,255,255,.10);
-          background: rgba(255,255,255,.04);
-        }
-        .cocinaEntrega.isDelivery{
-          border: 1px solid rgba(0,255,180,.22);
-          background: rgba(0,255,180,.08);
-          animation: entregaPulse 1.6s ease-in-out infinite;
-        }
-        .cocinaEntrega.isRetiro{
-          border: 1px solid rgba(255,255,255,.10);
-          background: rgba(255,255,255,.03);
-        }
-        @keyframes entregaPulse{
-          0%,100%{ transform: scale(1); box-shadow: 0 0 0 rgba(0,255,180,0); }
-          50%{ transform: scale(1.01); box-shadow: 0 0 0 6px rgba(0,255,180,.06); }
-        }
-        .cocinaEntregaMain{
-          display:flex;
-          align-items:center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-        .cocinaEntregaIcon{
-          font-size: 18px;
-        }
-        .cocinaEntregaLabel{
-          font-weight: 1000;
-          letter-spacing: .06em;
-          font-size: 14px;
-        }
-        .cocinaEntregaPrice{
-          margin-left: auto;
-          font-weight: 1000;
-          font-size: 14px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(0,0,0,.18);
-          border: 1px solid rgba(0,0,0,.20);
-        }
-        .cocinaEntregaDetails{
-          margin-top: 8px;
-          font-size: 13px;
-          opacity: .95;
-          display:flex;
-          flex-direction: column;
-          gap: 4px;
-          word-break: break-word;
-        }
 
-        .cocinaBlockTitle{
-          margin-top: 14px;
-          opacity: .75;
-          font-size: 12px;
-          margin-bottom: 8px;
-          font-weight: 900;
-          letter-spacing: .03em;
-        }
 
-        .cocinaItems{
-          display:flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-        .cocinaItem{
-          display:flex;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 10px 12px;
-          border-radius: 14px;
-          background: rgba(255,255,255,.04);
-          border: 1px solid rgba(255,255,255,.08);
-          align-items: flex-start;
-        }
-        .cocinaItemLeft{ min-width: 0; flex: 1; }
-        .cocinaQty{
-          display:inline-block;
-          min-width: 2.3rem;
-          font-weight: 700;
-        }
-        .cocinaItemName{
-          font-weight: 950;
-          font-size: 2rem;
-          word-break: break-word;
-        }
-        .cocinaVar{
-          margin-top: 4px;
-          opacity: .85;
-          font-size: 1.5rem;
-          font-weight: 800;
-          word-break: break-word;
-        }
-        .cocinaItemPrice{
-          opacity: .75;
-          font-size: 2rem;
-          font-weight: 950;
-          white-space: nowrap;
-          padding-top: 4px;
-        }
 
-        /* ✅ NUEVO: Extras visibles (clave) */
-        .cocinaExtras{
-          margin-top: 10px;
-          padding: 10px 10px;
-          border-radius: 12px;
-          background: rgba(255,255,255,.03);
-          border: 1px dashed rgba(255,255,255,.14);
-        }
-        .cocinaExtrasTitle{
-          font-size: 12px;
-          font-weight: 950;
-          opacity: .85;
-          margin-bottom: 6px;
-          letter-spacing: .02em;
-        }
-        .cocinaExtrasList{
-          display:flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-        .cocinaExtraLine{
-          display:flex;
-          gap: 8px;
-          align-items: baseline;
-          justify-content: space-between;
-        }
-        .cocinaExtraDot{
-          font-weight: 1000;
-          opacity: .85;
-        }
-        .cocinaExtraText{
-          flex: 1;
-          min-width: 0;
-          font-size: 13px;
-          font-weight: 900;
-          opacity: .95;
-          word-break: break-word;
-        }
-        .cocinaExtraGroup{
-          opacity: .7;
-          font-weight: 800;
-        }
-        .cocinaExtraPrice{
-          font-size: 13px;
-          font-weight: 1000;
-          opacity: .9;
-          white-space: nowrap;
-          margin-left: 10px;
-        }
+        /* 📱 MOBILE */
+@media (max-width: 720px){
+  .cocinaGrid{
+    display: flex;
+    flex-direction: column;
+    align-items: center;   /* ✅ centra las cards */
+    gap: 14px;
+  }
 
-        .cocinaNota{
-          margin-top: 12px;
-          padding: 12px;
-          border-radius: 14px;
-          background: rgba(255,122,0,.14);
-          border: 1px solid rgba(255,122,0,.35);
-          animation: notaPulse 1.6s ease-in-out infinite;
-        }
-        .cocinaNotaTitle{
-          font-size: 12px;
-          font-weight: 950;
-          opacity: .95;
-          margin-bottom: 6px;
-          letter-spacing: .03em;
-        }
-        .cocinaNotaText{
-          font-size: 14px;
-          font-weight: 950;
-          line-height: 1.3;
-          word-break: break-word;
-        }
-        @keyframes notaPulse{
-          0%,100%{ transform: scale(1); box-shadow: 0 0 0 rgba(255,122,0,0); }
-          50%{ transform: scale(1.01); box-shadow: 0 0 0 6px rgba(255,122,0,.06); }
-        }
+  .cocinaCard{
+    width: 100%;
+    max-width: 520px;
+  }
 
-        /* ✅ Totales */
-        .cocinaTotales{
-          margin-top: 12px;
-          padding: 10px 12px;
-          border-radius: 14px;
-          border: 1px solid rgba(255,255,255,.08);
-          background: rgba(255,255,255,.03);
-          display:flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-        .cocinaTotRow{
-          display:flex;
-          justify-content: space-between;
-          gap: 10px;
-          font-size: 13px;
-          opacity: .95;
-        }
-        .cocinaTotRow.total{
-          padding-top: 6px;
-          margin-top: 4px;
-          border-top: 1px dashed rgba(255,255,255,.10);
-          font-size: 14px;
-          font-weight: 950;
-          opacity: 1;
-        }
+  .mobileSection{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+}
 
-        .cocinaFooter{
-          margin-top: 14px;
-          display:flex;
-          justify-content: space-between;
-          align-items: baseline;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-        .cocinaPago{
-          opacity: .9;
-          font-size: 1rem;
-        }
-        .cocinaPago2{ opacity: .9; }
-        .cocinaTotal{
-          font-weight: 950;
-          font-size: 16px;
-        }
-        .cocinaActions{
-          margin-top: 12px;
-          display:flex;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-                  /* ✅ Mobile: nombre -> extras -> precio (precio abajo) */
-        @media (max-width: 520px){
-          .cocinaItem{
-            flex-direction: column;
-            align-items: stretch;
-            gap: 10px;
-          }
 
-          /* el bloque izquierdo ocupa todo el ancho */
-          .cocinaItemLeft{
-            width: 100%;
-          }
 
-          /* precio baja abajo y queda alineado prolijo */
-          .cocinaItemPrice{
-            width: 100%;
-            padding-top: 0;
-            text-align: right;
-            opacity: .95;
-            font-weight: 950;
-          }
+/* ✅ Tabs (MOBILE + DESKTOP) */
+.mobileTabs{
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 10px 0;
+  background: rgba(0,0,0,.75);
+  backdrop-filter: blur(8px);
+}
 
-                  /* ✅ Compacto / más pro (mobile + desktop) */
-        .cocinaCard{
-          padding: 12px;
-        }
+/* Botones tabs: en desktop pueden ser más anchos */
+.tabBtn{
+  flex: 1;
+  max-width: 220px;
+  border-radius: 999px;
+  padding: 10px 12px;
+  font-weight: 950;
+  font-size: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: inherit;
+}
 
-        .cocinaHeader{
-          margin-bottom: 10px;
-        }
+.tabBtn.active{
+  background: rgba(255,255,255,.14);
+  border: 1px solid rgba(255,255,255,.22);
+  transform: translateY(-1px);
+}
 
-        .cocinaName{
-          font-size: 16px;
-        }
+/* En desktop también queremos “una sola ventana”, como mobile */
+.desktopSections{ display: none; }
 
-        .cocinaMeta{
-          font-size: 12px;
-          gap: 8px;
-        }
 
-        .cocinaEstado{
-          padding: 7px 10px;
-          font-size: 12px;
-        }
 
-        .cocinaEntrega{
-          padding: 10px;
-          border-radius: 14px;
-        }
-        .cocinaEntregaLabel{
-          font-size: 12px;
-        }
-        .cocinaEntregaPrice{
-          font-size: 12px;
-          padding: 5px 8px;
-        }
-        .cocinaEntregaDetails{
-          font-size: 12px;
-          gap: 3px;
-        }
 
-        .cocinaBlockTitle{
-          margin-top: 12px;
-          font-size: 11px;
-          margin-bottom: 6px;
-        }
 
-        .cocinaItems{
-          gap: 7px;
-        }
 
-        .cocinaItem{
-          padding: 9px 10px;
-          border-radius: 12px;
-          gap: 10px;
-        }
 
-        .cocinaQty{
-          min-width: 2.1rem;
-          font-weight: 800;
-          opacity: .9;
-        }
 
-        .cocinaItemName{
-          font-size: 14px; /* ⬅️ antes 2rem */
-          line-height: 1.15;
-        }
+        /* 👇👇👇
+           ACÁ VA TODO TU CSS EXISTENTE (cocinaHeader, entrega, items, extras, nota, totales, etc.)
+           Yo NO lo borro: pegá abajo de estas reglas tu bloque completo tal como lo tenías.
+        */      
+       
+           /* 🖥 DESKTOP: 3 columnas */
 
-        .cocinaVar{
-          font-size: 12px; /* ⬅️ antes 1.5rem */
-          margin-top: 3px;
-        }
-
-        .cocinaItemPrice{
-          font-size: 14px; /* ⬅️ antes 2rem */
-          opacity: .9;
-        }
-
-        .cocinaExtras{
-          margin-top: 8px;
-          padding: 9px;
-          border-radius: 12px;
-        }
-        .cocinaExtrasTitle{
-          font-size: 11px;
-          margin-bottom: 5px;
-        }
-        .cocinaExtraText{
-          font-size: 12px;
-        }
-        .cocinaExtraPrice{
-          font-size: 12px;
-        }
-
-        .cocinaNota{
-          padding: 10px;
-          border-radius: 12px;
-        }
-        .cocinaNotaTitle{
-          font-size: 11px;
-        }
-        .cocinaNotaText{
-          font-size: 13px;
-          line-height: 1.25;
-        }
-
-        .cocinaTotales{
-          margin-top: 10px;
-          padding: 9px 10px;
-          border-radius: 12px;
-          gap: 5px;
-        }
-        .cocinaTotRow{
-          font-size: 12px;
-        }
-        .cocinaTotRow.total{
-          font-size: 13px;
-        }
-
-        .cocinaFooter{
-          margin-top: 12px;
-        }
-        .cocinaPago{
-          font-size: 12px;
-        }
-        .cocinaTotal{
-          font-size: 14px;
-        }
-
-        .cocinaActions{
-          margin-top: 10px;
-          gap: 8px;
-        }
-
-        /* ✅ Mobile extra: todavía más prolijo */
-        @media (max-width: 520px){
-          .cocinaCard{
-            padding: 11px;
-          }
-          .cocinaName{
-            font-size: 15px;
-          }
-          .cocinaItem{
-            padding: 9px 10px;
-          }
-          .cocinaItemPrice{
-            text-align: right;
-          }
-        }
-
-        }
 
       `}</style>
 
@@ -1150,56 +807,106 @@ export default function OwnerPanel() {
         </div>
       </div>
 
-      {/* pendientes */}
-      <div style={{ marginTop: 16 }}>
-        <h3 style={{ margin: "1rem 0 10px" }}>🟠 Pedidos pendientes ({pendientes.length})</h3>
+      {/* ✅ Tabs (solo mobile) */}
+{/* ✅ Tabs (MOBILE + DESKTOP) */}
+<div className="mobileTabs">
+  <button
+    type="button"
+    className={`tabBtn ${tab === "pendientes" ? "active" : ""}`}
+    onClick={() => setTab("pendientes")}
+  >
+    🟠 Pendientes ({pendientes.length})
+  </button>
 
-        {pendientes.length ? (
-          <div className="cocinaGrid">
-            {pendientes.map((p) => (
-              <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
-            ))}
-          </div>
-        ) : (
-          <div style={{ opacity: 0.7 }}>No hay pendientes.</div>
-        )}
+  <button
+    type="button"
+    className={`tabBtn ${tab === "encurso" ? "active" : ""}`}
+    onClick={() => setTab("encurso")}
+  >
+    🟢 En curso ({encurso.length})
+  </button>
+
+  <button
+    type="button"
+    className={`tabBtn ${tab === "pasados" ? "active" : ""}`}
+    onClick={() => setTab("pasados")}
+  >
+    ⚫ Pasados ({pasadosHoy.length})
+  </button>
+</div>
+
+{/* ✅ UNA SOLA VENTANA (MOBILE + DESKTOP) */}
+<div className="mobileSection">
+  <h3 style={{ margin: "1rem 0 10px", textAlign: "center" }}>{tabTitle}</h3>
+
+  {tab === "pendientes" ? (
+    pendientes.length ? (
+      <div className="cocinaGrid">
+        {pendientes.map((p) => (
+          <PedidoCard
+            key={p.id}
+            pedido={p}
+            onAction={onAction}
+            tiendaId={tiendaId}
+            db={db}
+            pedidosHoy={entregadosHoy}
+          />
+        ))}
       </div>
+    ) : (
+      <div style={{ opacity: 0.7, textAlign: "center" }}>No hay pendientes.</div>
+    )
+  ) : null}
 
-      {/* en curso */}
-      <div style={{ marginTop: 18 }}>
-        <h3 style={{ margin: "5rem 0 10px" }}>🟢 En preparación / Listos ({encurso.length})</h3>
-
-        {encurso.length ? (
-          <div className="cocinaGrid">
-            {encurso.map((p) => (
-              <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
-            ))}
-          </div>
-        ) : (
-          <div style={{ opacity: 0.7 }}>No hay pedidos activos.</div>
-        )}
+  {tab === "encurso" ? (
+    encurso.length ? (
+      <div className="cocinaGrid">
+        {encurso.map((p) => (
+          <PedidoCard
+            key={p.id}
+            pedido={p}
+            onAction={onAction}
+            tiendaId={tiendaId}
+            db={db}
+            pedidosHoy={entregadosHoy}
+          />
+        ))}
       </div>
+    ) : (
+      <div style={{ opacity: 0.7, textAlign: "center" }}>No hay pedidos activos.</div>
+    )
+  ) : null}
 
-      {/* pasados */}
-      <div style={{ marginTop: 18 }}>
-        <h3 style={{ margin: "5rem 0 10px" }}>⚫ Pedidos pasados ({pasadosHoy.length})</h3>
-
-        {pasadosHoy.length ? (
-          <div className="cocinaGrid">
-            {pasadosHoy.map((p) => (
-              <PedidoCard key={p.id} pedido={p} onAction={onAction} tiendaId={tiendaId} />
-            ))}
-          </div>
-        ) : (
-          <div style={{ opacity: 0.7 }}>No hay pasados (hoy).</div>
-        )}
-
-        {pasados.length > pasadosHoy.length ? (
-          <div style={{ marginTop: 10, opacity: 0.55, fontSize: 12 }}>
-            * Los pedidos pasados de días anteriores se están ocultando automáticamente.
-          </div>
-        ) : null}
+  {tab === "pasados" ? (
+    pasadosHoy.length ? (
+      <div className="cocinaGrid">
+        {pasadosHoy.map((p) => (
+          <PedidoCard
+            key={p.id}
+            pedido={p}
+            onAction={onAction}
+            tiendaId={tiendaId}
+            db={db}
+            pedidosHoy={entregadosHoy}
+          />
+        ))}
       </div>
+    ) : (
+      <div style={{ opacity: 0.7, textAlign: "center" }}>No hay pasados (hoy).</div>
+    )
+  ) : null}
+
+  {tab === "pasados" && pasados.length > pasadosHoy.length ? (
+    <div style={{ marginTop: 10, opacity: 0.55, fontSize: 12, textAlign: "center" }}>
+      * Los pedidos pasados de días anteriores se están ocultando automáticamente.
+    </div>
+  ) : null}
+</div>
+
+
+      {/* ✅ DESKTOP: mantenemos las 3 secciones como estaban */}
+     
     </div>
   );
 }
+
