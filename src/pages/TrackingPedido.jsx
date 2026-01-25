@@ -390,12 +390,7 @@ export default function TrackingPedido() {
         }
       `}</style>
 
-      {/* top actions (fuera de boleta) */}
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-        <button className="btnGhost" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
-          ⬅️  VOLVER AL LOCAL
-        </button>
-      </div>
+     
 
       {/* ✅ BOLETA */}
       <div className="boletaWrap" style={{ marginTop: 12 }}>
@@ -535,14 +530,13 @@ export default function TrackingPedido() {
         </div>
 
         {/* Footer actions */}
-        <div className="boletaActions">
-          <button className="btnGhost" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
-            Seguir comprando
-          </button>
-          <button className="btnPrimary" type="button" onClick={() => nav(-1)}>
-            Volver
-          </button>
-        </div>
+       {/* Footer actions */}
+<div className="boletaActions">
+  <button className="btnPrimary" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
+    ⬅️ VOLVER AL LOCAL
+  </button>
+</div>
+
       </div>
     </div>
   );

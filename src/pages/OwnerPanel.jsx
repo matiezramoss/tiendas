@@ -620,10 +620,18 @@ export default function OwnerPanel() {
         }
 
         .cocinaGrid{
-          display:grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 3.5rem;
-        }
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3.5rem;
+
+  align-items: start; 
+}
+
+
+        .cocinaCard{
+  height: fit-content;      
+  align-self: start;      
+}
         @media (max-width: 860px){
           .cocinaGrid{ grid-template-columns: 1fr; }
         }
@@ -931,6 +939,155 @@ export default function OwnerPanel() {
             opacity: .95;
             font-weight: 950;
           }
+
+                  /* ✅ Compacto / más pro (mobile + desktop) */
+        .cocinaCard{
+          padding: 12px;
+        }
+
+        .cocinaHeader{
+          margin-bottom: 10px;
+        }
+
+        .cocinaName{
+          font-size: 16px;
+        }
+
+        .cocinaMeta{
+          font-size: 12px;
+          gap: 8px;
+        }
+
+        .cocinaEstado{
+          padding: 7px 10px;
+          font-size: 12px;
+        }
+
+        .cocinaEntrega{
+          padding: 10px;
+          border-radius: 14px;
+        }
+        .cocinaEntregaLabel{
+          font-size: 12px;
+        }
+        .cocinaEntregaPrice{
+          font-size: 12px;
+          padding: 5px 8px;
+        }
+        .cocinaEntregaDetails{
+          font-size: 12px;
+          gap: 3px;
+        }
+
+        .cocinaBlockTitle{
+          margin-top: 12px;
+          font-size: 11px;
+          margin-bottom: 6px;
+        }
+
+        .cocinaItems{
+          gap: 7px;
+        }
+
+        .cocinaItem{
+          padding: 9px 10px;
+          border-radius: 12px;
+          gap: 10px;
+        }
+
+        .cocinaQty{
+          min-width: 2.1rem;
+          font-weight: 800;
+          opacity: .9;
+        }
+
+        .cocinaItemName{
+          font-size: 14px; /* ⬅️ antes 2rem */
+          line-height: 1.15;
+        }
+
+        .cocinaVar{
+          font-size: 12px; /* ⬅️ antes 1.5rem */
+          margin-top: 3px;
+        }
+
+        .cocinaItemPrice{
+          font-size: 14px; /* ⬅️ antes 2rem */
+          opacity: .9;
+        }
+
+        .cocinaExtras{
+          margin-top: 8px;
+          padding: 9px;
+          border-radius: 12px;
+        }
+        .cocinaExtrasTitle{
+          font-size: 11px;
+          margin-bottom: 5px;
+        }
+        .cocinaExtraText{
+          font-size: 12px;
+        }
+        .cocinaExtraPrice{
+          font-size: 12px;
+        }
+
+        .cocinaNota{
+          padding: 10px;
+          border-radius: 12px;
+        }
+        .cocinaNotaTitle{
+          font-size: 11px;
+        }
+        .cocinaNotaText{
+          font-size: 13px;
+          line-height: 1.25;
+        }
+
+        .cocinaTotales{
+          margin-top: 10px;
+          padding: 9px 10px;
+          border-radius: 12px;
+          gap: 5px;
+        }
+        .cocinaTotRow{
+          font-size: 12px;
+        }
+        .cocinaTotRow.total{
+          font-size: 13px;
+        }
+
+        .cocinaFooter{
+          margin-top: 12px;
+        }
+        .cocinaPago{
+          font-size: 12px;
+        }
+        .cocinaTotal{
+          font-size: 14px;
+        }
+
+        .cocinaActions{
+          margin-top: 10px;
+          gap: 8px;
+        }
+
+        /* ✅ Mobile extra: todavía más prolijo */
+        @media (max-width: 520px){
+          .cocinaCard{
+            padding: 11px;
+          }
+          .cocinaName{
+            font-size: 15px;
+          }
+          .cocinaItem{
+            padding: 9px 10px;
+          }
+          .cocinaItemPrice{
+            text-align: right;
+          }
+        }
+
         }
 
       `}</style>

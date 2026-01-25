@@ -158,6 +158,9 @@ export default function Checkout() {
     showToast._t = window.setTimeout(() => setToast(""), 1400);
   }
 
+  // ✅ NUEVO: candado anti doble tap / doble click
+  const [submitting, setSubmitting] = useState(false);
+
   async function copy(txt, label) {
     if (!txt) return;
     try {
@@ -221,93 +224,118 @@ export default function Checkout() {
   async function confirmar() {
     if (!canConfirm) return;
 
-    const db = getFirestore(app);
-    const tiendaId = tienda?.id || tienda?.slug || slug || "chaketortas";
-
-    const entregaSnapshot =
-      tipoEntrega === "delivery"
-        ? {
-            tipo: "delivery",
-            direccion: String(direccion).trim(),
-            barrioKey: String(barrioSel?.key || ""),
-            barrioNombre: String(barrioSel?.nombre || ""),
-            envio: Number(envio || 0),
-          }
-        : {
-            tipo: "retiro",
-            direccion: "",
-            barrioKey: "",
-            barrioNombre: "",
-            envio: 0,
-          };
-
-    // ✅ IMPORTANTÍSIMO: campos “planos” (compatibles con OwnerPanel / filtros / WA)
-    const entregaTipo = entregaSnapshot.tipo; // "delivery" | "retiro"
-
-    const payload = {
-      tiendaIdSnapshot: String(tiendaId),
-      estado: "pendiente",
-      cliente: {
-        nombre: String(cliente.nombre).trim(),
-        apellido: String(cliente.apellido).trim(),
-        contacto: String(cliente.contacto).trim(),
-        contactoDigits: onlyDigitsPhone(cliente.contacto),
-      },
-      mensaje: String(mensaje || "").trim(),
-
-      // ✅ snapshot completo (por si querés usarlo en tracking / histórico)
-      entregaSnapshot,
-
-      // ✅ campos planos (esto arregla tu problema de “me aparece retiro”)
-      entregaTipo, // <-- EL DATO QUE TE FALTABA PARA QUE OWNERPANEL LO LEA
-      direccionSnapshot: entregaTipo === "delivery" ? String(direccion).trim() : "",
-      barrioKeySnapshot: entregaTipo === "delivery" ? String(barrioSel?.key || "") : "",
-      barrioNombreSnapshot: entregaTipo === "delivery" ? String(barrioSel?.nombre || "") : "",
-      envioPrecioSnapshot: entregaTipo === "delivery" ? Number(envio || 0) : 0,
-
-      // ✅ Totales
-      subtotalSnapshot: Number(subtotal || 0),
-      totalFinalSnapshot: Number(totalFinal || 0),
-
-      // compat (si antes “totalSnapshot” era el total sin envío)
-      totalSnapshot: Number(subtotal || 0),
-
-      // (si ya lo estabas usando en otros lados, lo dejamos)
-      envioSnapshot: Number(envio || 0),
-
-      items: carrito.map((it) => ({
-        productoId: it.productoId || "",
-        nombreSnapshot: it.nombreSnapshot || "",
-        varianteKey: it.varianteKey || "",
-        varianteTituloSnapshot: it.varianteTituloSnapshot || "",
-        precioUnitSnapshot: Number(it.precioUnitSnapshot || 0),
-        cantidad: Number(it.cantidad || 1),
-        opcionesSnapshot: Array.isArray(it.opcionesSnapshot) ? it.opcionesSnapshot : [],
-        // ✅ FIX: NUNCA mandar undefined a Firestore
-        ...(Array.isArray(it.tagsHorarioSnapshot) ? { tagsHorarioSnapshot: it.tagsHorarioSnapshot } : {}),
-      })),
-
-      pagoElegido, // "sena" | "total" | "efectivo"
-      montoAPagarSnapshot: Number(montoAPagar || 0),
-      senaSnapshot: Number(sena || 0),
-
-      createdAt: serverTimestamp(),
-      decisionAt: null,
-      stockProcesado: false,
-    };
-
-    const ref = collection(db, "tiendas", String(tiendaId), "pedidos");
-    const docRef = await addDoc(ref, payload);
+    // ✅ anti doble confirmación
+    if (submitting) return;
+    setSubmitting(true);
 
     try {
-      localStorage.setItem("pedido_last_id", docRef.id);
-      localStorage.removeItem("carrito_checkout");
-    } catch (e) {
-      console.warn("No se pudo guardar en localStorage", e);
-    }
+      const db = getFirestore(app);
+      const tiendaId = tienda?.id || tienda?.slug || slug || "chaketortas";
 
-    showToast("Pedido creado ✅");
-    nav(`/t/${tiendaId}/pedido/${docRef.id}`, { state: { tiendaId } });
+      const entregaSnapshot =
+        tipoEntrega === "delivery"
+          ? {
+              tipo: "delivery",
+              direccion: String(direccion).trim(),
+              barrioKey: String(barrioSel?.key || ""),
+              barrioNombre: String(barrioSel?.nombre || ""),
+              envio: Number(envio || 0),
+            }
+          : {
+              tipo: "retiro",
+              direccion: "",
+              barrioKey: "",
+              barrioNombre: "",
+              envio: 0,
+            };
+
+      // ✅ IMPORTANTÍSIMO: campos “planos” (compatibles con OwnerPanel / filtros / WA)
+      const entregaTipo = entregaSnapshot.tipo; // "delivery" | "retiro"
+
+      const payload = {
+        tiendaIdSnapshot: String(tiendaId),
+        estado: "pendiente",
+        cliente: {
+          nombre: String(cliente.nombre).trim(),
+          apellido: String(cliente.apellido).trim(),
+          contacto: String(cliente.contacto).trim(),
+          contactoDigits: onlyDigitsPhone(cliente.contacto),
+        },
+        mensaje: String(mensaje || "").trim(),
+
+        // ✅ snapshot completo (por si querés usarlo en tracking / histórico)
+        entregaSnapshot,
+
+        // ✅ campos planos (esto arregla tu problema de “me aparece retiro”)
+        entregaTipo,
+        direccionSnapshot: entregaTipo === "delivery" ? String(direccion).trim() : "",
+        barrioKeySnapshot: entregaTipo === "delivery" ? String(barrioSel?.key || "") : "",
+        barrioNombreSnapshot: entregaTipo === "delivery" ? String(barrioSel?.nombre || "") : "",
+        envioPrecioSnapshot: entregaTipo === "delivery" ? Number(envio || 0) : 0,
+
+        // ✅ Totales
+        subtotalSnapshot: Number(subtotal || 0),
+        totalFinalSnapshot: Number(totalFinal || 0),
+
+        // compat (si antes “totalSnapshot” era el total sin envío)
+        totalSnapshot: Number(subtotal || 0),
+
+        // (si ya lo estabas usando en otros lados, lo dejamos)
+        envioSnapshot: Number(envio || 0),
+
+        items: carrito.map((it) => ({
+          productoId: it.productoId || "",
+          nombreSnapshot: it.nombreSnapshot || "",
+          varianteKey: it.varianteKey || "",
+          varianteTituloSnapshot: it.varianteTituloSnapshot || "",
+          precioUnitSnapshot: Number(it.precioUnitSnapshot || 0),
+          cantidad: Number(it.cantidad || 1),
+          opcionesSnapshot: Array.isArray(it.opcionesSnapshot) ? it.opcionesSnapshot : [],
+          // ✅ FIX: NUNCA mandar undefined a Firestore
+          ...(Array.isArray(it.tagsHorarioSnapshot) ? { tagsHorarioSnapshot: it.tagsHorarioSnapshot } : {}),
+        })),
+
+        pagoElegido, // "sena" | "total" | "efectivo"
+        montoAPagarSnapshot: Number(montoAPagar || 0),
+        senaSnapshot: Number(sena || 0),
+
+        createdAt: serverTimestamp(),
+        decisionAt: null,
+        stockProcesado: false,
+      };
+
+      const ref = collection(db, "tiendas", String(tiendaId), "pedidos");
+      const docRef = await addDoc(ref, payload);
+
+      try {
+        // guardamos el último pedido (si te sirve para algo)
+        localStorage.setItem("pedido_last_id", docRef.id);
+
+        // ✅ compra confirmada => vaciar carrito persistido (checkout)
+        localStorage.removeItem("carrito_checkout");
+        localStorage.removeItem("tienda_checkout");
+
+        // ✅ MUY IMPORTANTE: vaciar también el carrito general de la tienda
+        // (esto evita que vuelvas al local y siga quedando la compra anterior)
+        localStorage.removeItem("carrito");
+
+        // ✅ además, dejalo explícitamente vacío por si tu app lee "carrito_checkout"
+        localStorage.setItem("carrito_checkout", "[]");
+
+        // ✅ vaciar carrito en pantalla (estado del checkout)
+        setCarrito([]);
+      } catch (e) {
+        console.warn("No se pudo actualizar localStorage", e);
+      }
+
+      showToast("Pedido creado ✅");
+      nav(`/t/${tiendaId}/pedido/${docRef.id}`, { state: { tiendaId } });
+    } catch (err) {
+      console.error("Error al confirmar pedido:", err);
+      showToast("No pude confirmar 😕 probá de nuevo");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   // ✅ CAMBIO INTEGRADO: helper para mostrar extras/opciones elegidas
@@ -347,8 +375,8 @@ export default function Checkout() {
     return <div className="loading">No hay tienda cargada. Volvé a la tienda y tocá “Continuar”.</div>;
   }
 
-return (
-  <div className="checkoutWrap">
+  return (
+    <div className="checkoutWrap">
       {toast ? (
         <div
           style={{
@@ -658,11 +686,13 @@ return (
       </div>
 
       <div style={{ display: "flex", gap: 10 }}>
-        <button className="btnGhost" type="button" onClick={() => nav(-1)}>
+        <button className="btnGhost" type="button" onClick={() => nav(-1)} disabled={submitting}>
           Volver
         </button>
-        <button className="btnPrimary" type="button" onClick={confirmar} disabled={!canConfirm}>
-          Confirmar compra
+
+        {/* ✅ ahora bloquea doble confirmación */}
+        <button className="btnPrimary" type="button" onClick={confirmar} disabled={!canConfirm || submitting}>
+          {submitting ? "Confirmando..." : "Confirmar compra"}
         </button>
       </div>
 

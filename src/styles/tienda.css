@@ -1670,7 +1670,7 @@
   }
 
   .productoSheet .sheetBody{
-    padding: 16px;
+    padding: 0px;
     padding-bottom: 140px;
   }
 
@@ -1891,4 +1891,13 @@ html, body, #root{
   .cocinaExtras{
     padding: 10px;
   }
+}
+.boletaActions{
+  padding: 12px 14px;
+  border-top: 1px dashed rgba(255,255,255,.16);
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center; /* antes: flex-end */
+  background: rgba(0,0,0,.10);
 }
