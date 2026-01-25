@@ -229,8 +229,13 @@ export default function Checkout() {
     setSubmitting(true);
 
     try {
-      const db = getFirestore(app);
-      const tiendaId = tienda?.id || tienda?.slug || slug || "chaketortas";
+	      const db = getFirestore(app);
+	      const tiendaId = tienda?.id || tienda?.slug || slug || "chaketortas";
+	      // ✅ el carrito "general" de la tienda (TiendaPublica) se guarda como: carrito_<slug>
+	      const tiendaSlug = String(tienda?.slug || slug || tiendaId || "").trim();
+	      const carritoKey1 = tiendaSlug ? `carrito_${tiendaSlug}` : "";
+	      // por si algún día cambiás y usás tiendaId distinto al slug (no molesta)
+	      const carritoKey2 = tiendaId && tiendaId !== tiendaSlug ? `carrito_${tiendaId}` : "";
 
       const entregaSnapshot =
         tipoEntrega === "delivery"
@@ -316,8 +321,9 @@ export default function Checkout() {
         localStorage.removeItem("tienda_checkout");
 
         // ✅ MUY IMPORTANTE: vaciar también el carrito general de la tienda
-        // (esto evita que vuelvas al local y siga quedando la compra anterior)
-        localStorage.removeItem("carrito");
+        // (TiendaPublica lo guarda como: carrito_<slug>)
+        if (carritoKey1) localStorage.removeItem(carritoKey1);
+        if (carritoKey2) localStorage.removeItem(carritoKey2);
 
         // ✅ además, dejalo explícitamente vacío por si tu app lee "carrito_checkout"
         localStorage.setItem("carrito_checkout", "[]");
