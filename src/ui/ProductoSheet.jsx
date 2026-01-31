@@ -8,6 +8,7 @@ function precioMin(producto) {
   if (!vars.length) return 0;
   return Math.min(...vars.map((v) => Number(v?.precio || 0)));
 }
+
 function normalizeKey(x) {
   return String(x || "").trim();
 }
@@ -50,10 +51,8 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
   useEffect(() => {
     if (!open) return;
 
-    // ✅ lock scroll sin salto (para que el fondo quede quieto)
     lockBodyScrollSheet();
 
-    // ✅ ESC para cerrar
     const onKey = (e) => {
       if (e.key === "Escape") onClose?.();
     };
@@ -65,7 +64,6 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
     setUnits([{ varKey: defaultVar, sel: {} }]);
 
     requestAnimationFrame(() => {
-      // scroll arriba del contenedor interno (si existe)
       if (sheetRef.current) sheetRef.current.scrollTop = 0;
     });
 
@@ -107,12 +105,28 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
     return g?.multiple === true || k === "extras";
   }
 
-  const activeUnit = units[activeIdx] || { varKey: normalizeKey(vars[0]?.key), sel: {} };
+  const activeUnit =
+    units[activeIdx] || { varKey: normalizeKey(vars[0]?.key), sel: {} };
 
   const activeVariante = useMemo(() => {
     const k = normalizeKey(activeUnit?.varKey);
     return vars.find((v) => normalizeKey(v?.key) === k) || vars[0] || null;
   }, [vars, activeUnit?.varKey]);
+
+  // ✅ DETALLE DINÁMICO:
+  // - si hay variantes: mostrar detalles de la variante activa
+  // - si esa variante no tiene detalles: fallback a producto.detalle
+  // - si no hay variantes: usar producto.detalle
+  const detalleParaMostrar = useMemo(() => {
+    const detalleProducto = String(producto?.detalle ?? "").trim();
+
+    if (vars.length) {
+      const dVar = String(activeVariante?.detalles ?? "").trim();
+      return dVar || detalleProducto || "";
+    }
+
+    return detalleProducto || "";
+  }, [vars.length, activeVariante?.detalles, producto?.detalle]);
 
   function precioBaseForVarKey(vk) {
     const k = normalizeKey(vk);
@@ -132,7 +146,9 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
       if (isMultiGroup(g)) {
         const keys = Array.isArray(sel[gKey]) ? sel[gKey] : [];
         for (const itemKey of keys) {
-          const it = items.find((x) => normalizeKey(x?.key) === normalizeKey(itemKey));
+          const it = items.find(
+            (x) => normalizeKey(x?.key) === normalizeKey(itemKey)
+          );
           if (!it) continue;
           out.push({
             groupKey: gKey,
@@ -145,7 +161,9 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
       } else {
         const itemKey = sel[gKey];
         if (!itemKey) continue;
-        const it = items.find((x) => normalizeKey(x?.key) === normalizeKey(itemKey));
+        const it = items.find(
+          (x) => normalizeKey(x?.key) === normalizeKey(itemKey)
+        );
         if (!it) continue;
         out.push({
           groupKey: gKey,
@@ -229,8 +247,10 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
     const list = Array.isArray(units) && units.length ? units : [activeUnit];
 
     for (const u of list) {
-      const varianteKey = normalizeKey(u?.varKey) || normalizeKey(vars[0]?.key);
-      const varianteObj = vars.find((v) => normalizeKey(v?.key) === varianteKey) || vars[0] || null;
+      const varianteKey =
+        normalizeKey(u?.varKey) || normalizeKey(vars[0]?.key);
+      const varianteObj =
+        vars.find((v) => normalizeKey(v?.key) === varianteKey) || vars[0] || null;
 
       const base = precioBaseForVarKey(varianteKey);
       const opts = opcionesElegidasFromUnit(u);
@@ -267,12 +287,15 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
         role="dialog"
         aria-modal="true"
       >
-        {/* ✅ SOLO ESTO SCROLLEA (web y mobile) */}
         <div className="sheetBody" ref={sheetRef}>
           <div className="sheetTop">
             <div>
               <div className="sheetTitle">{producto?.nombre || "Producto"}</div>
-              {producto?.descripcion ? <div className="sheetDetalle">{producto.descripcion}</div> : null}
+
+              {/* ✅ esto queda igual: siempre producto.descripcion */}
+              {producto?.descripcion ? (
+                <div className="sheetDetalle">{producto.descripcion}</div>
+              ) : null}
             </div>
 
             <button className="sheetClose" type="button" onClick={onClose}>
@@ -309,15 +332,28 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
             </div>
           ) : null}
 
+          {/* ✅ ACA: Detalle dinámico por variante */}
           {vars.length ? (
             <div className="sheetBlock">
               <div className="sheetBlockTitle">Elegí variante (unidad {activeIdx + 1})</div>
-              <div className="chipRow">
+
+              {detalleParaMostrar ? (
+                <div className="sheetDetalle" style={{ marginTop: 8 }}>
+                  {detalleParaMostrar}
+                </div>
+              ) : null}
+
+              <div className="chipRow" style={{ marginTop: 10 }}>
                 {vars.map((v) => (
                   <button
                     key={v.key}
                     type="button"
-                    className={"chip" + (normalizeKey(activeUnit?.varKey) === normalizeKey(v.key) ? " on" : "")}
+                    className={
+                      "chip" +
+                      (normalizeKey(activeUnit?.varKey) === normalizeKey(v.key)
+                        ? " on"
+                        : "")
+                    }
                     onClick={() => setVarForActive(normalizeKey(v.key))}
                   >
                     {v?.titulo || v?.key} · $ {money(Number(v?.precio || 0))}
@@ -325,7 +361,17 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
                 ))}
               </div>
             </div>
-          ) : null}
+          ) : (
+            // ✅ si NO hay variantes: mostrar producto.detalle (si existe)
+            detalleParaMostrar ? (
+              <div className="sheetBlock">
+                <div className="sheetBlockTitle">Detalle</div>
+                <div className="sheetDetalle" style={{ marginTop: 8 }}>
+                  {detalleParaMostrar}
+                </div>
+              </div>
+            ) : null
+          )}
 
           {opciones.length ? (
             <div className="sheetBlock">
@@ -359,7 +405,9 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
                             onClick={() => toggleOption(gKey, itKey, multi)}
                           >
                             {it?.titulo || itKey}
-                            {Number(it?.precioExtra || 0) ? ` (+$${money(Number(it?.precioExtra || 0))})` : ""}
+                            {Number(it?.precioExtra || 0)
+                              ? ` (+$${money(Number(it?.precioExtra || 0))})`
+                              : ""}
                           </button>
                         );
                       })}
@@ -371,14 +419,21 @@ export default function ProductoSheet({ open, onClose, producto, onAdd }) {
           ) : null}
         </div>
 
-        {/* ✅ Bottom fijo */}
         <div className="sheetBottom">
           <div className="qty">
-            <button className="qtyBtn" type="button" onClick={() => setQty((q) => Math.max(1, (q || 1) - 1))}>
+            <button
+              className="qtyBtn"
+              type="button"
+              onClick={() => setQty((q) => Math.max(1, (q || 1) - 1))}
+            >
               −
             </button>
             <div className="qtyNum">{qty}</div>
-            <button className="qtyBtn" type="button" onClick={() => setQty((q) => (q || 1) + 1)}>
+            <button
+              className="qtyBtn"
+              type="button"
+              onClick={() => setQty((q) => (q || 1) + 1)}
+            >
               +
             </button>
           </div>
