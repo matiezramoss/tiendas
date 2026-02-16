@@ -158,7 +158,7 @@ export default function TrackingPedido() {
           </div>
 
           <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="btnPrimary" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
+            <button className="btnPrimary" type="button" onClick={() => nav(`/${tiendaId}`)}>
               Volver a la tienda
             </button>
           </div>
@@ -532,7 +532,7 @@ export default function TrackingPedido() {
         {/* Footer actions */}
        {/* Footer actions */}
 <div className="boletaActions">
-  <button className="btnPrimary" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
+  <button className="btnPrimary" type="button" onClick={() => nav(`/${tiendaId}`)}>
     ⬅️ VOLVER AL LOCAL
   </button>
 </div>

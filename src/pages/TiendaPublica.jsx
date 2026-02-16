@@ -152,7 +152,7 @@ export default function TiendaPublica() {
   }
 
   function irCheckout() {
-    nav(`/t/${slug}/checkout`, { state: { tienda, carrito } });
+    nav(`/${slug}/checkout`, { state: { tienda, carrito } });
   }
 
   if (error) {

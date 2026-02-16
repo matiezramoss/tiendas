@@ -335,7 +335,7 @@ export default function Checkout() {
       }
 
       showToast("Pedido creado ✅");
-      nav(`/t/${tiendaId}/pedido/${docRef.id}`, { state: { tiendaId } });
+      nav(`/${tiendaId}/pedido/${docRef.id}`, { state: { tiendaId } });
     } catch (err) {
       console.error("Error al confirmar pedido:", err);
       showToast("No pude confirmar 😕 probá de nuevo");

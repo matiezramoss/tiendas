@@ -759,7 +759,7 @@ export default function OwnerPanel() {
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button className="btnGhost" type="button" onClick={() => nav(`/t/${tiendaId}`)}>
+          <button className="btnGhost" type="button" onClick={() => nav(`/${tiendaId}`)}>
             Ver tienda
           </button>
           <button className="btnGhost" type="button" onClick={onLogout}>

@@ -9,6 +9,13 @@ export async function getTiendaBySlug(slug) {
   return { id: snap.id, ...snap.data() };
 }
 
+export async function listTiendasPublicas() {
+  const ref = collection(db, "tiendas");
+  const snap = await getDocs(ref);
+  // lectura pública según tus rules
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
 export async function listProductos(tiendaId) {
   const ref = collection(db, "tiendas", tiendaId, "productos");
   const snap = await getDocs(ref);

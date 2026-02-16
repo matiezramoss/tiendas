@@ -17,7 +17,7 @@ export default function AdminLogin() {
   // si ya está validado, mandamos al panel
   useEffect(() => {
     if (!loading && userDoc && tiendaId) {
-      nav("/owner", { replace: true });
+      nav("/admin", { replace: true });
     }
   }, [loading, userDoc, tiendaId, nav]);
 

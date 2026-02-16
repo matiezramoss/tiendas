@@ -77,7 +77,7 @@ export default function CarritoDrawer({
     } else {
       const slug = String(tienda?.slug || "").trim();
       if (!slug) return alert("Falta tienda.slug para ir a checkout.");
-      nav(`/t/${slug}/checkout`, { state: { tienda, carrito } });
+      nav(`/${slug}/checkout`, { state: { tienda, carrito } });
     }
 
     // ✅ cerramos después
